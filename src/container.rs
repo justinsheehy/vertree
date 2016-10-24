@@ -7,7 +7,7 @@ pub enum ContainerType {
 }
 
 /// The type of a leaf node that holds data
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Container {
     Blob(Vec<u8>),
     Queue(VecDeque<Vec<u8>>),

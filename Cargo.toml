@@ -6,3 +6,6 @@ authors = ["Justin Sheehy <justin@iago.org",
 
 [dependencies]
 error-chain = "0.5"
+
+[dev-dependencies]
+assert_matches = "1.0"

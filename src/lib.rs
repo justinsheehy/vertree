@@ -1,6 +1,10 @@
 #[macro_use]
 extern crate error_chain;
 
+#[cfg(test)]
+#[macro_use]
+extern crate assert_matches;
+
 mod errors;
 mod container;
 
@@ -10,7 +14,7 @@ use errors::*;
 use container::{Container, ContainerType};
 
 /// The contents of a Node
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Content {
     Directory(Vec<Edge>),
     Leaf(Container)
@@ -35,7 +39,7 @@ impl Content {
 }
 
 /// A single entry in the contents of an interior node
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Edge {
     pub label: String,
     pub node: Arc<RefCell<Node>>
@@ -59,7 +63,7 @@ pub enum NodeType {
 }
 
 /// A node in a hierarchical version tree
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Node {
     pub path: String,
     pub version: usize,
@@ -83,6 +87,7 @@ impl Node {
 /// This tree is persistent, and every update to a node both path copies the parent until it gets
 /// to the root and increments the parent's version number. Only a single thread can write to the
 /// tree at one time.
+#[derive(Debug)]
 pub struct Tree {
     root: Arc<RefCell<Node>>
 }
@@ -116,13 +121,11 @@ impl Tree {
         let mut node = root.clone();
         let mut iter = path.split('/').peekable();
         while let Some(s) = iter.next() {
-            // This is the last component in the path
             if iter.peek().is_none() {
-                println!("insert leaf {}", s);
+                // This is the last component in the path
                 try!(insert_leaf(node.clone(), &s, ty));
                 break;
             }
-            println!("insert dir {}", s);
             node = try!(insert_dir(node.clone(), &s));
         }
         return Ok(Tree {root: root})
@@ -150,8 +153,13 @@ fn validate_path<S>(path: S) -> Result<String>
 fn insert_dir(parent: Arc<RefCell<Node>>, label: &str) -> Result<Arc<RefCell<Node>>>
 {
     let mut path = parent.borrow().path.clone();
+    if path.len() != 1 {
+        // We aren't at the root.
+        path.push_str("/");
+    }
     path.push_str(label);
-    if let Content::Directory(ref mut edges) = parent.borrow_mut().content {
+    let mut parent = parent.borrow_mut();
+    if let Content::Directory(ref mut edges) = parent.content {
         match edges.binary_search_by_key(&label, |e| &e.label) {
             Ok(index) => {
                 // Unsafe because of the call to edges.get_unchecked_mut(index).
@@ -179,11 +187,15 @@ fn insert_dir(parent: Arc<RefCell<Node>>, label: &str) -> Result<Arc<RefCell<Nod
             }
         }
     }
-    Err(ErrorKind::InvalidPathContent(parent.borrow().path.clone()).into())
+    Err(ErrorKind::InvalidPathContent(parent.path.clone()).into())
 }
 
 fn insert_leaf(parent: Arc<RefCell<Node>>, label: &str, ty: NodeType) -> Result<()> {
     let mut path = parent.borrow().path.clone();
+    if path.len() != 1 {
+        // We aren't at the root.
+        path.push_str("/");
+    }
     path.push_str(label);
     if let Content::Directory(ref mut edges) = parent.borrow_mut().content {
         // Assume sorted vec
@@ -211,15 +223,59 @@ fn cow_node(node: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use errors::*;
+    use container::Container;
 
     #[test]
     fn create_nodes() {
-        let tree = Tree::new();
-        let tree = tree.create("/somenode", NodeType::Blob).unwrap();
+        let original_tree = Tree::new();
+        assert_eq!(original_tree.root.borrow().version, 0);
+        let tree = original_tree.create("/somenode", NodeType::Directory).unwrap();
+        assert_eq!(tree.root.borrow().version, 1);
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
+        assert_eq!(tree.root.borrow().version, 2);
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue).unwrap();
+        assert_eq!(tree.root.borrow().version, 3);
+        assert_eq!(original_tree.root.borrow().version, 0);
         if let Content::Directory(ref edges) = tree.root.borrow().content {
-            assert_eq!(edges.len(), 1);
-            assert_eq!(edges[0].label, "somenode".to_string());
+            assert_eq!(edges.len(), 2);
+            assert_eq!(edges[0].label, "somedir1".to_string());
+            assert_eq!(edges[1].label, "somenode".to_string());
+            assert_eq!(edges[1].node.borrow().version, 1);
+            assert_eq!(edges[0].node.borrow().version, 0);
+            if let Content::Directory(ref edges) = edges[1].node.borrow().content {
+                assert_eq!(edges.len(), 1);
+                assert_eq!(edges[0].label, "somechildnode".to_string());
+                assert_eq!(edges[0].node.borrow().version, 0);
+                assert_eq!(edges[0].node.borrow().path, "/somenode/somechildnode".to_string());
+                assert_matches!(edges[0].node.borrow().content, Content::Leaf(Container::Set(_)));
+            } else {
+                assert!(false);
+            }
+            if let Content::Directory(ref edges) = edges[0].node.borrow().content {
+                assert_eq!(edges.len(), 1);
+                assert_eq!(edges[0].label, "somedir2".to_string());
+                assert_eq!(edges[0].node.borrow().version, 0);
+                assert_eq!(edges[0].node.borrow().path, "/somedir1/somedir2".to_string());
+                if let Content::Directory(ref edges) = edges[0].node.borrow().content {
+                    assert_eq!(edges.len(), 1);
+                    assert_eq!(edges[0].label, "leaf");
+                    assert_eq!(edges[0].node.borrow().version, 0);
+                    assert_eq!(edges[0].node.borrow().path, "/somedir1/somedir2/leaf".to_string());
+                    assert_matches!(edges[0].node.borrow().content,
+                                    Content::Leaf(Container::Queue(_)));
+                }
+            } else {
+                assert!(false)
+            }
+        } else {
+            assert!(false);
         }
-        println!("{:?}", tree.root.borrow().path);
+        let err = tree.create("/somenode/somechildnode", NodeType::Set).unwrap_err();
+        assert_matches!(*err.kind(), ErrorKind::AlreadyExists(_));
+        let err = tree.create("blahblah", NodeType::Set).unwrap_err();
+        assert_matches!(*err.kind(), ErrorKind::BadPath(_));
+        let err = tree.create("/somenode/somechildnode/leaf", NodeType::Set).unwrap_err();
+        assert_matches!(*err.kind(), ErrorKind::InvalidPathContent(_));
     }
 }

@@ -5,3 +5,4 @@ authors = ["Justin Sheehy <justin@iago.org",
            "Andrew J. Stone <andrew.j.stone.1@gmail.com>"]
 
 [dependencies]
+error-chain = "0.5"

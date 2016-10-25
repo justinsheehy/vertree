@@ -87,7 +87,7 @@ impl Node {
 /// This tree is persistent, and every update to a node both path copies the parent until it gets
 /// to the root and increments the parent's version number. Only a single thread can write to the
 /// tree at one time.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tree {
     root: Arc<RefCell<Node>>
 }
@@ -130,6 +130,39 @@ impl Tree {
         }
         return Ok(Tree {root: root})
     }
+
+    pub fn iter(&self) -> Iter {
+        Iter {
+            stack: vec![self.root.clone()]
+        }
+    }
+
+}
+
+/// An iterator that performs a depth first walk of the entire tree.
+///
+/// This iterator returns Arc pointers to RefCell<Node>. The tree being iterated over is logically
+/// immutable and it is not safe to modify the contents of the RefCell.
+//
+// It would be awesome to get rid of the atomic pointer clones in this implementation. But using
+// RefCells makes this difficult to do without unsafe code AFAICT because borrowing on the refcell
+// limits the scope of the inner value to within the call to next().
+pub struct Iter {
+    stack: Vec<Arc<RefCell<Node>>>,
+}
+
+impl Iterator for Iter {
+    type Item = Arc<RefCell<Node>>;
+    fn next(&mut self) -> Option<Arc<RefCell<Node>>> {
+        if self.stack.len() == 0 {
+            return None;
+        }
+        let node = self.stack.pop().unwrap();
+        if let Content::Directory(ref edges) = node.borrow().content {
+            self.stack.extend(edges.iter().cloned().rev().map(|edge| edge.node));
+        }
+        Some(node)
+    }
 }
 
 /// Check for a leading slash and at least one level of depth in path.
@@ -162,7 +195,7 @@ fn insert_dir(parent: Arc<RefCell<Node>>, label: &str) -> Result<Arc<RefCell<Nod
     if let Content::Directory(ref mut edges) = parent.content {
         match edges.binary_search_by_key(&label, |e| &e.label) {
             Ok(index) => {
-                // Unsafe because of the call to edges.get_unchecked_mut(index).
+                // Unsafe block needed because of the call to edges.get_unchecked_mut(index).
                 // We know it's safe though because we just got the index in our binary search.
                 unsafe {
                     let ref mut child = edges.get_unchecked_mut(index);
@@ -277,5 +310,38 @@ mod tests {
         assert_matches!(*err.kind(), ErrorKind::BadPath(_));
         let err = tree.create("/somenode/somechildnode/leaf", NodeType::Set).unwrap_err();
         assert_matches!(*err.kind(), ErrorKind::InvalidPathContent(_));
+    }
+
+    #[test]
+    fn create_nodes_iter_check() {
+        let tree = Tree::new();
+        let tree = tree.create("/somenode", NodeType::Directory).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue).unwrap();
+
+        // Tuples are (path, num_edges, version)
+        // Num edges is  None if not a directory
+        // Note the sorted order
+        let expected = [("/", Some(2), 3),
+                        ("/somedir1", Some(1), 0),
+                        ("/somedir1/somedir2", Some(1), 0),
+                        ("/somedir1/somedir2/leaf", None, 0),
+                        ("/somenode", Some(1), 1),
+                        ("/somenode/somechildnode", None, 0)];
+
+        // All the directories and leaves including "/"
+        assert_eq!(tree.iter().count(), expected.len());
+        for (i, node) in tree.iter().enumerate() {
+            let (path, num_edges, version) = expected[i];
+            assert_eq!(node.borrow().path, path);
+            assert_eq!(node.borrow().version, version);
+            if let Some(num_edges) = num_edges {
+                if let Content::Directory(ref edges) = node.borrow().content {
+                    assert_eq!(edges.len(), num_edges);
+                } else {
+                    assert!(false);
+                }
+            }
+        }
     }
 }

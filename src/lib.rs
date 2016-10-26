@@ -6,27 +6,27 @@ extern crate error_chain;
 extern crate assert_matches;
 
 mod errors;
-mod container;
+pub mod container;
 
 use std::sync::Arc;
 use std::cell::RefCell;
 use errors::*;
-use container::{Container, ContainerType};
+use container::{Container, Blob, Queue, Set};
 
 /// The contents of a Node
 #[derive(Clone, Debug)]
 pub enum Content {
     Directory(Vec<Edge>),
-    Leaf(Container)
+    Container(Container)
 }
 
 impl Content {
     pub fn new(ty: NodeType) -> Content {
         match ty {
             NodeType::Directory => Content::Directory(vec![]),
-            NodeType::Blob => Content::Leaf(Container::new(ContainerType::Blob)),
-            NodeType::Queue => Content::Leaf(Container::new(ContainerType::Queue)),
-            NodeType::Set => Content::Leaf(Container::new(ContainerType::Set))
+            NodeType::Blob => Content::Container(Container::Blob(Blob::new())),
+            NodeType::Queue => Content::Container(Container::Queue(Queue::new())),
+            NodeType::Set => Content::Container(Container::Set(Set::new()))
         }
     }
 
@@ -137,6 +137,13 @@ impl Tree {
         }
     }
 
+  //  /// Take a full path to a node and an operation to perform on the node.
+   //  ///
+    // /// Return an error if the node doesn't exist or if the operation doesn't match the node type.
+//    /// Return the new tree on success.
+//    pub fn update(&self, path: &str, op: Operation) -> Result<Tree> {
+ //   }
+
 }
 
 /// Directories contain a list of labels for each edge
@@ -171,7 +178,7 @@ impl<'a> Iterator for Iter<'a> {
                     self.stack.extend(edges.iter().rev().map(|edge| &edge.node));
                     IterContent::Directory(edges.iter().map(|edge| &edge.label as &str).collect())
                 },
-                Content::Leaf(ref container) => {
+                Content::Container(ref container) => {
                     IterContent::Container(&container)
                 }
             };
@@ -300,7 +307,7 @@ mod tests {
                 assert_eq!(edges[0].label, "somechildnode".to_string());
                 assert_eq!(edges[0].node.borrow().version, 0);
                 assert_eq!(edges[0].node.borrow().path, "/somenode/somechildnode".to_string());
-                assert_matches!(edges[0].node.borrow().content, Content::Leaf(Container::Set(_)));
+                assert_matches!(edges[0].node.borrow().content, Content::Container(Container::Set(_)));
             } else {
                 assert!(false);
             }
@@ -315,7 +322,7 @@ mod tests {
                     assert_eq!(edges[0].node.borrow().version, 0);
                     assert_eq!(edges[0].node.borrow().path, "/somedir1/somedir2/leaf".to_string());
                     assert_matches!(edges[0].node.borrow().content,
-                                    Content::Leaf(Container::Queue(_)));
+                                    Content::Container(Container::Queue(_)));
                 }
             } else {
                 assert!(false)

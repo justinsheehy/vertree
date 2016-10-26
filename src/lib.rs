@@ -41,8 +41,8 @@ impl Content {
 /// A single entry in the contents of an interior node
 #[derive(Clone, Debug)]
 pub struct Edge {
-    pub label: String,
-    pub node: Arc<RefCell<Node>>
+    label: String,
+    node: Arc<RefCell<Node>>
 }
 
 impl Edge {
@@ -65,9 +65,9 @@ pub enum NodeType {
 /// A node in a hierarchical version tree
 #[derive(Clone, Debug)]
 pub struct Node {
-    pub path: String,
-    pub version: usize,
-    pub content: Content
+    path: String,
+    version: usize,
+    content: Content
 }
 
 impl Node {
@@ -133,35 +133,54 @@ impl Tree {
 
     pub fn iter(&self) -> Iter {
         Iter {
-            stack: vec![self.root.clone()]
+            stack: vec![&self.root]
         }
     }
 
 }
 
-/// An iterator that performs a depth first walk of the entire tree.
-///
-/// This iterator returns Arc pointers to RefCell<Node>. The tree being iterated over is logically
-/// immutable and it is not safe to modify the contents of the RefCell.
-//
-// It would be awesome to get rid of the atomic pointer clones in this implementation. But using
-// RefCells makes this difficult to do without unsafe code AFAICT because borrowing on the refcell
-// limits the scope of the inner value to within the call to next().
-pub struct Iter {
-    stack: Vec<Arc<RefCell<Node>>>,
+/// Directories contain a list of labels for each edge
+/// Containers are an actual reference to the Container and it's data
+pub enum IterContent<'a> {
+    Directory(Vec<&'a str>),
+    Container(&'a Container)
 }
 
-impl Iterator for Iter {
-    type Item = Arc<RefCell<Node>>;
-    fn next(&mut self) -> Option<Arc<RefCell<Node>>> {
+pub struct IterNode<'a> {
+    pub path: &'a str,
+    pub version: usize,
+    pub content: IterContent<'a>
+}
+
+/// An iterator that performs a depth first walk of the entire tree.
+pub struct Iter<'a> {
+    stack: Vec<&'a Arc<RefCell<Node>>>,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = IterNode<'a>;
+    fn next(&mut self) -> Option<IterNode<'a>> {
         if self.stack.len() == 0 {
             return None;
         }
         let node = self.stack.pop().unwrap();
-        if let Content::Directory(ref edges) = node.borrow().content {
-            self.stack.extend(edges.iter().cloned().rev().map(|edge| edge.node));
+        unsafe {
+            let ptr = node.as_ptr();
+            let content = match (*ptr).content {
+                Content::Directory(ref edges) => {
+                    self.stack.extend(edges.iter().rev().map(|edge| &edge.node));
+                    IterContent::Directory(edges.iter().map(|edge| &edge.label as &str).collect())
+                },
+                Content::Leaf(ref container) => {
+                    IterContent::Container(&container)
+                }
+            };
+            Some(IterNode {
+                path: &(*ptr).path,
+                version: (*ptr).version,
+                content: content
+            })
         }
-        Some(node)
     }
 }
 
@@ -333,11 +352,11 @@ mod tests {
         assert_eq!(tree.iter().count(), expected.len());
         for (i, node) in tree.iter().enumerate() {
             let (path, num_edges, version) = expected[i];
-            assert_eq!(node.borrow().path, path);
-            assert_eq!(node.borrow().version, version);
+            assert_eq!(node.path, path);
+            assert_eq!(node.version, version);
             if let Some(num_edges) = num_edges {
-                if let Content::Directory(ref edges) = node.borrow().content {
-                    assert_eq!(edges.len(), num_edges);
+                if let IterContent::Directory(ref labels) = node.content {
+                    assert_eq!(labels.len(), num_edges);
                 } else {
                     assert!(false);
                 }

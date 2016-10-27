@@ -1,77 +1,4 @@
-use std::collections::{VecDeque, HashSet};
-
-/// The type of a leaf node that holds data
-#[derive(Clone, Debug)]
-pub enum Container {
-    Blob(Blob),
-    Queue(Queue),
-    Set(Set)
-}
-
-#[derive(Clone, Debug)]
-pub struct Blob {
-    data: Vec<u8>
-}
-
-impl Blob {
-    pub fn new() -> Blob {
-        Blob {
-            data: vec![]
-        }
-    }
-
-    pub fn put(&mut self, data: Vec<u8>) {
-        self.data = data;
-    }
-
-    pub fn get(&mut self) -> &Vec<u8> {
-        &self.data
-    }
-
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Queue {
-    data: VecDeque<Vec<u8>>
-}
-
-impl Queue {
-    pub fn new() -> Queue {
-        Queue {
-            data: VecDeque::new()
-        }
-    }
-
-    /// Append an element onto the back of the queue
-    pub fn push(&mut self, element: Vec<u8>) {
-        self.data.push_back(element);
-    }
-
-    /// Remove the element at the front of the queue and return it
-    /// Returns `None` if empty
-    pub fn pop(&mut self) -> Option<Vec<u8>> {
-        self.data.pop_front()
-    }
-
-    /// Return a reference to the element at the front of the queue
-    /// Returns `None` if empty
-    pub fn front(&self) -> Option<&Vec<u8>> {
-        self.data.front()
-    }
-
-    /// Return a reference to the element at the back of the queue
-    /// Returns `None` if empty
-    pub fn back(&self) -> Option<&Vec<u8>> {
-        self.data.front()
-    }
-
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-}
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Set {
@@ -107,7 +34,7 @@ impl Set {
     /// # Examples
     ///
     /// ```
-    /// use vertree::container::Set;
+    /// use vertree::containers::Set;
     ///
     /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().collect() };
     /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().collect() };
@@ -124,7 +51,7 @@ impl Set {
     /// # Examples
     ///
     /// ```
-    /// use vertree::container::Set;
+    /// use vertree::containers::Set;
     ///
     /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().collect() };
     /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().collect() };
@@ -144,7 +71,7 @@ impl Set {
     /// # Examples
     ///
     /// ```
-    /// use vertree::container::Set;
+    /// use vertree::containers::Set;
     ///
     /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().collect() };
     /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().collect() };
@@ -163,7 +90,7 @@ impl Set {
     /// # Examples
     ///
     /// ```
-    /// use vertree::container::Set;
+    /// use vertree::containers::Set;
     ///
     /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().collect() };
     /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().collect() };
@@ -184,5 +111,59 @@ impl Set {
     /// Returns `true` if `self` is a subset of `other`
     pub fn is_superset(&self, other: &Set) -> bool {
         self.data.is_superset(&other.data)
+    }
+}
+
+/// Operations on Sets
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SetOp {
+    Insert {
+        path: String,
+        val: Vec<u8>
+    },
+    Remove {
+        path: String,
+        val: Vec<u8>
+    },
+    Contains {
+        path: String,
+        val: Vec<u8>
+    },
+    /// Union of all the sets in the nodes at `paths` and any sets passed in `sets`
+    Union {
+        paths: Vec<String>,
+        sets: Vec<HashSet<Vec<u8>>>
+    },
+    /// Intersection all the sets in the nodes at `paths` and any sets passed in `sets`
+    Intersection {
+        paths: Vec<String>,
+        sets: Vec<HashSet<Vec<u8>>>
+    },
+    /// Successively call set.difference on each path in `paths` followed by each set in `sets`
+    Difference {
+        paths: Vec<String>,
+        sets: Vec<HashSet<Vec<u8>>>
+    },
+    /// Successively call set.symmetric_difference on each path in `paths`
+    /// followed by each set in `sets`
+    SymmetricDifference {
+        paths: Vec<String>,
+        sets: Vec<HashSet<Vec<u8>>>
+    },
+    /// Check to see if the set at `path1` is a subset of the set at `path2` or alternately a subset
+    /// of the set passed in `set`. It is an error to have `Some()` variants for both `path2` and
+    /// `set`.
+    Subset {
+        path1: String,
+        path2: Option<String>,
+        set: Option<HashSet<Vec<u8>>>
+    },
+    /// Check to see if the set at `path1` is a subset of the set at `path2` or alternately a subset
+    /// of the set passed in `set`. It is an error to have `Some()` variants for both `path2` and
+    /// `set`.
+    Superset {
+        path1: String,
+        path2: Option<String>,
+        set: Option<HashSet<Vec<u8>>>
     }
 }

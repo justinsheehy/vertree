@@ -1,17 +1,22 @@
+#![feature(proc_macro)]
+
 #[macro_use]
 extern crate error_chain;
+
+#[macro_use]
+extern crate serde_derive;
 
 #[cfg(test)]
 #[macro_use]
 extern crate assert_matches;
 
 mod errors;
-pub mod container;
+pub mod containers;
 
 use std::sync::Arc;
 use std::cell::RefCell;
 use errors::*;
-use container::{Container, Blob, Queue, Set};
+use containers::{Container, Blob, Queue, Set};
 
 /// The contents of a Node
 #[derive(Clone, Debug)]
@@ -136,13 +141,6 @@ impl Tree {
             stack: vec![&self.root]
         }
     }
-
-  //  /// Take a full path to a node and an operation to perform on the node.
-   //  ///
-    // /// Return an error if the node doesn't exist or if the operation doesn't match the node type.
-//    /// Return the new tree on success.
-//    pub fn update(&self, path: &str, op: Operation) -> Result<Tree> {
- //   }
 
 }
 
@@ -283,7 +281,7 @@ fn cow_node(node: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>> {
 mod tests {
     use super::*;
     use errors::*;
-    use container::Container;
+    use containers::Container;
 
     #[test]
     fn create_nodes() {

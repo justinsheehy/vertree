@@ -16,7 +16,7 @@ pub mod containers;
 use std::sync::Arc;
 use std::cell::RefCell;
 use errors::*;
-use containers::{Container, Blob, Queue, Set};
+use containers::{Container, Blob, BlobOp, Queue, QueueOp, Set, SetOp, Value, Reply, Op};
 
 /// The contents of a Node
 #[derive(Clone, Debug)]
@@ -59,7 +59,7 @@ impl Edge {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum NodeType {
     Directory,
     Blob,
@@ -83,6 +83,15 @@ impl Node {
             path: path.into(),
             version: 0,
             content: content
+        }
+    }
+
+    pub fn get_type(&self) -> NodeType {
+        match self.content {
+            Content::Directory(_) => NodeType::Directory,
+            Content::Container(Container::Blob(_)) => NodeType::Blob,
+            Content::Container(Container::Queue(_)) => NodeType::Queue,
+            Content::Container(Container::Set(_)) => NodeType::Set,
         }
     }
 }
@@ -142,6 +151,83 @@ impl Tree {
         }
     }
 
+    pub fn run(&self, op: Op) -> Result<(Reply, Option<Tree>)> {
+        if op.is_write() {
+            return self.update(op);
+        }
+        let replies = try!(self.read(op));
+        Ok((replies, None))
+    }
+
+    fn update(&self, op: Op) -> Result<(Reply, Option<Tree>)> {
+        // TODO: complete this
+        unreachable!()
+    }
+
+    fn read(&self, op: Op) -> Result<Reply> {
+        match op {
+            Op::Blob(op) => self.read_blob(op),
+            _ => unreachable!()
+//            Op:Queue(op) => read_queue(&self, op),
+//            Op:Set(op) => read_set(&self, op)
+        }
+    }
+
+    fn read_blob(&self, op: BlobOp) -> Result<Reply> {
+        let reply = match op {
+            BlobOp::Get {path} => {
+                let (blob, version) = try!(self.find_blob(&path));
+                Reply {
+                    path: path,
+                    version: version,
+                    value: Value::Blob(blob)
+                }
+            },
+            BlobOp::Len {path} => {
+                let (blob, version) = try!(self.find_blob(&path));
+                Reply  {
+                    path: path,
+                    version: version,
+                    value: Value::Int(blob.len())
+                }
+            },
+            _ => unreachable!()
+        };
+        Ok(reply)
+    }
+
+    fn find_blob(&self, path: &str) -> Result<(&Blob, usize)> {
+        let (content, version) = try!(self.find(path, NodeType::Blob));
+        if let Content::Container(Container::Blob(ref blob)) = *content {
+            return Ok((blob, version));
+        }
+        unreachable!();
+    }
+
+    fn find(&self, path: &str, ty: NodeType) -> Result<(&Content, usize)> {
+        let mut parent = &self.root;
+        let mut iter = path.split('/').peekable();
+        while let Some(s) = iter.next() {
+            unsafe {
+                if let Content::Directory(ref edges) = (*parent.as_ptr()).content {
+                    if let Ok(index) = edges.binary_search_by_key(&s, |e| &e.label) {
+                        if iter.peek().is_none() {
+                            let node = &(*edges.get_unchecked(index).node.as_ptr());
+                            let node_ty = node.get_type();
+                            if node_ty != ty {
+                                return Err(ErrorKind::WrongType(node.path.clone(), node_ty).into());
+                            }
+                            return Ok((&node.content, node.version))
+                        }
+                        parent = &edges.get_unchecked(index).node;
+                        continue;
+                    }
+                }
+                return Err(ErrorKind::DoesNotExist(parent.borrow().path.clone()).into());
+            }
+        }
+        unreachable!();
+    }
 }
 
 /// Directories contain a list of labels for each edge

@@ -24,7 +24,7 @@ impl Blob {
 }
 
 /// Operations on Blobs
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum BlobOp {
     Put {
         path: String,
@@ -38,3 +38,11 @@ pub enum BlobOp {
     }
 }
 
+impl BlobOp {
+    pub fn is_write(&self) -> bool {
+        if let BlobOp::Put {..} = *self {
+            return true;
+        }
+        false
+    }
+}

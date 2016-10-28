@@ -115,7 +115,7 @@ impl Set {
 }
 
 /// Operations on Sets
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum SetOp {
     Insert {
         path: String,
@@ -167,3 +167,15 @@ pub enum SetOp {
         set: Option<HashSet<Vec<u8>>>
     }
 }
+
+impl SetOp {
+    /// Returns true if the operation requires updating the tree
+    pub fn is_write(&self) -> bool {
+        match *self {
+            SetOp::Insert {..} => true,
+            SetOp::Remove {..} => true,
+            _ => false
+        }
+    }
+}
+

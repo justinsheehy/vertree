@@ -40,7 +40,7 @@ impl Queue {
 }
 
 /// Operations on Queues
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum QueueOp {
     Push {
         path: String,
@@ -57,6 +57,17 @@ pub enum QueueOp {
     },
     Len {
         path: String
+    }
+}
+
+impl QueueOp {
+    /// Returns true if the operation requires updating the tree
+    pub fn is_write(&self) -> bool {
+        match *self {
+            QueueOp::Push {..} => true,
+            QueueOp::Pop {..} => true,
+            _ => false
+        }
     }
 }
 

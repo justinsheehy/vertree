@@ -1,4 +1,9 @@
+// used by serde
 #![feature(proc_macro)]
+
+// Used by containers/Set
+// See https://github.com/rust-lang/rust/issues/34511
+#![feature(conservative_impl_trait)]
 
 #[macro_use]
 extern crate error_chain;

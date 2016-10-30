@@ -151,6 +151,11 @@ impl Tree {
         }
     }
 
+    /// Run an operation on parts of the tree.
+    ///
+    /// This operation may utilize multiple nodes in the tree.
+    /// Readable operations don't perform any copies or allocations.
+    /// Writable operations perform path copies and return the new tree.
     pub fn run(&self, op: Op) -> Result<(Reply, Option<Tree>)> {
         if op.is_write() {
             return self.update(op);
@@ -160,8 +165,10 @@ impl Tree {
     }
 
     fn update(&self, op: Op) -> Result<(Reply, Option<Tree>)> {
-        // TODO: complete this
-        unreachable!()
+        match op {
+            Op::Blob(op) => self.write_blob(op),
+            _ => unreachable!()
+        }
     }
 
     fn read(&self, op: Op) -> Result<Reply> {
@@ -171,6 +178,57 @@ impl Tree {
 //            Op:Queue(op) => read_queue(&self, op),
 //            Op:Set(op) => read_set(&self, op)
         }
+    }
+
+    fn write_blob(&self, op: BlobOp) -> Result<(Reply, Option<Tree>)> {
+        if let BlobOp::Put { path, val } = op {
+            let path = try!(validate_path(path));
+            let root = cow_node(&self.root);
+            let mut node = root.clone();
+            let mut iter = path.split('/').peekable();
+            let mut version = 0;
+            while let Some(s) = iter.next() {
+                let mut path = node.borrow().path.clone();
+                if path.len() != 1 {
+                    // We aren't at the root.
+                    path.push_str("/");
+                }
+                path.push_str(s);
+                unsafe {
+                    if let Content::Directory(ref mut edges) = (*node.as_ptr()).content {
+                        if let Ok(index) = edges.binary_search_by_key(&s, |e| &e.label) {
+                            let mut edge = edges.get_unchecked_mut(index);
+                            node = cow_node(&edge.node);
+                            edge.node = node.clone();
+                            if iter.peek().is_none() {
+                                if let Content::Container(Container::Blob(ref mut blob))
+                                    = node.borrow_mut().content
+                                {
+                                    // Ugh remove this clone
+                                    blob.data = val.clone();
+                                } else {
+                                    return Err(
+                                        ErrorKind::WrongType(node.borrow().path.clone(),
+                                                             node.borrow().get_type()).into());
+                                }
+                                version = node.borrow().version;
+                            }
+                            continue;
+                        } else {
+                            return Err(ErrorKind::DoesNotExist(path).into());
+                        }
+                    }
+                    return Err(ErrorKind::InvalidPathContent(node.borrow().path.clone()).into());
+                }
+            }
+            let reply = Reply {
+                path: path.clone(), // TODO: remove this clone
+                version: version,
+                value: Value::None
+            };
+            return Ok((reply, Some(Tree {root: root})));
+        }
+        unreachable!();
     }
 
     fn read_blob(&self, op: BlobOp) -> Result<Reply> {
@@ -204,6 +262,10 @@ impl Tree {
         unreachable!();
     }
 
+    /// Walk the tree until the desired node at `path` is found.
+    ///
+    /// Return the content and its version or an error if any part of the path doesn't exist or the
+    /// node at `path` is of the wrong type.
     fn find(&self, path: &str, ty: NodeType) -> Result<(&Content, usize)> {
         let mut parent = &self.root;
         let mut iter = path.split('/').peekable();

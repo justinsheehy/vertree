@@ -354,10 +354,67 @@ impl<'a> Iterator for Iter<'a> {
 /// Iterate over a tree in order, taking the shrotest path required to return each node in `paths`.
 /// Along the way copy any paths necessary to build up a new tree that allows modifications to each
 /// node in paths.
-struct CowLeafIter<'a> {
-    root: Arc<RefCell<Node>>,
+struct CowPathIter<'a> {
     paths: Vec<&'a str>,
-    stack: Vec<&'a Arc<RefCell<Node>>>
+    stack: Vec<*mut Node>
+}
+
+impl<'a> CowPathIter<'a> {
+    pub fn new(root: &'a Arc<RefCell<Node>>,
+               mut paths: Vec<&'a str>,
+               max_depth: usize) -> CowPathIter<'a>
+    {
+        paths.sort();
+        paths.dedup();
+        paths.reverse();
+        let mut stack = Vec::with_capacity(max_depth);
+        let root = cow_node(root);
+        stack.push(root.as_ptr());
+        CowPathIter {
+            paths: paths,
+            stack: stack
+        }
+    }
+
+    /// Walk the tree to find the node living at `path`
+    ///
+    /// Copy the path to the node and return a mutable reference to the copied node.
+    /// This implementation only performs copies while walking down the tree. Successive walks are
+    /// performed from the last node, back up the tree and down other paths as necessary. Therefore,
+    /// this implementation performs the minimum number of copies necessary for a COW tree.
+    fn walk(&mut self) -> Result<&'a mut Node> {
+        let path = self.paths.pop().unwrap();
+        loop {
+            unsafe {
+                let mut node = *self.stack.last().unwrap();
+                if path.starts_with(&(*node).path) {
+                    let num_labels = (*node).path.split('/').skip_while(|&s| s == "").count();
+                    let mut split = path.split('/').skip_while(|&s| s == "").skip(num_labels);
+                    while let Some(label) = split.next() {
+                        if label == "" {
+                            // Skip Trailing slashes
+                            continue;
+                        }
+                        node = try!(cow_get_child(node, &label));
+                        self.stack.push(node);
+                    }
+                    return Ok(&mut *node);
+                }
+                // No matching prefix, back up the tree
+                self.stack.pop();
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for CowPathIter<'a> {
+    type Item = Result<&'a mut Node>;
+    fn next(&mut self) -> Option<Result<&'a mut Node>> {
+        if self.paths.len() == 0{
+            return None;
+        }
+        Some(self.walk())
+    }
 }
 
 
@@ -401,11 +458,7 @@ impl<'a> PathIter<'a> {
                         // Skip Trailing slashes
                         continue;
                     }
-                    let child_node = try!(get_child(&node, &label));
-                    // Extend the lifetime of &child_node via unsafe
-                    unsafe {
-                        node = &*child_node.as_ptr();
-                    }
+                    node = try!(get_child(&node, &label));
                     // Push the child on the stack
                     self.stack.push(node);
                 }
@@ -425,15 +478,39 @@ impl<'a> Iterator for PathIter<'a> {
         }
         Some(self.walk())
     }
-
 }
 
-fn get_child<'a>(node: &'a Node, label: &'a str) -> Result<&'a Arc<RefCell<Node>>> {
+/// Take a mutable parent directory node, and COW the child node given by it's label
+///
+/// Insert the COW'd child in the correct position and return a reference to it
+unsafe fn cow_get_child<'a>(node: *mut Node, label: &'a str) -> Result<*mut Node> {
+    if let Content::Directory(ref mut edges) = (*node).content {
+        match edges.binary_search_by_key(&label, |e| &e.label) {
+            Ok(index) => {
+                let mut edge = edges.get_unchecked_mut(index);
+                edge.node = cow_node(&edge.node);
+                return Ok(edge.node.as_ptr());
+            },
+            Err(_) => {
+                let mut path = (*node).path.clone();
+                if &path != "/" {
+                    path.push_str("/");
+                }
+                path.push_str(label);
+                return Err(ErrorKind::DoesNotExist(path).into());
+            }
+        }
+    }
+    Err(ErrorKind::InvalidPathContent((*node).path.clone()).into())
+}
+
+/// Return a reference to a child node of a directory given the child's label
+fn get_child<'a>(node: &'a Node, label: &'a str) -> Result<&'a Node> {
     if let Content::Directory(ref edges) = node.content {
         match edges.binary_search_by_key(&label, |e| &e.label) {
             Ok(index) => {
                 unsafe {
-                    return Ok(&edges.get_unchecked(index).node);
+                    return Ok(&*edges.get_unchecked(index).node.as_ptr());
                 }
             },
             Err(_) => {

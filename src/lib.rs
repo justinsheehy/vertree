@@ -108,13 +108,15 @@ impl Node {
 /// tree at one time.
 #[derive(Debug, Clone)]
 pub struct Tree {
-    root: Arc<RefCell<Node>>
+    root: Arc<RefCell<Node>>,
+    depth: usize
 }
 
 impl Tree {
     pub fn new() -> Tree {
         Tree {
-            root: Arc::new(RefCell::new(Node::new("/", Content::Directory(vec![]))))
+            root: Arc::new(RefCell::new(Node::new("/", Content::Directory(vec![])))),
+            depth: 1
         }
     }
 
@@ -132,22 +134,23 @@ impl Tree {
     /// the tree and then back upwards. It also doesn't require the use of parent pointers. Finally
     /// it doesn't rely on recursion, since Rust does not have tail recursion and we don't want to
     /// limit the depth of the tree arbitrarily.
-    pub fn create<S>(&self, path: S, ty: NodeType) -> Result<Tree>
-        where S: Into<String>
-    {
+    pub fn create(&self, path: &str, ty: NodeType) -> Result<Tree> {
         let path = try!(validate_path(path));
         let root = cow_node(&self.root);
         let mut node = root.clone();
         let mut iter = path.split('/').peekable();
+        let mut depth = 1;
         while let Some(s) = iter.next() {
             if iter.peek().is_none() {
                 // This is the last component in the path
                 try!(insert_leaf(node.clone(), &s, ty));
+                depth += 1;
                 break;
             }
             node = try!(insert_dir(node.clone(), &s));
+            depth += 1;
         }
-        return Ok(Tree {root: root})
+        return Ok(Tree {root: root, depth: depth})
     }
 
     pub fn iter(&self) -> Iter {
@@ -187,51 +190,16 @@ impl Tree {
 
     fn write_blob(&self, op: BlobOp) -> Result<(Reply, Option<Tree>)> {
         if let BlobOp::Put { path, val } = op {
-            let path = try!(validate_path(path));
-            let root = cow_node(&self.root);
-            let mut node = root.clone();
-            let mut iter = path.split('/').peekable();
-            let mut version = 0;
-            while let Some(s) = iter.next() {
-                let mut path = node.borrow().path.clone();
-                if path.len() != 1 {
-                    // We aren't at the root.
-                    path.push_str("/");
-                }
-                path.push_str(s);
-                unsafe {
-                    if let Content::Directory(ref mut edges) = (*node.as_ptr()).content {
-                        if let Ok(index) = edges.binary_search_by_key(&s, |e| &e.label) {
-                            let mut edge = edges.get_unchecked_mut(index);
-                            node = cow_node(&edge.node);
-                            edge.node = node.clone();
-                            if iter.peek().is_none() {
-                                if let Content::Container(Container::Blob(ref mut blob))
-                                    = node.borrow_mut().content
-                                {
-                                    // Ugh remove this clone
-                                    blob.data = val.clone();
-                                } else {
-                                    return Err(
-                                        ErrorKind::WrongType(node.borrow().path.clone(),
-                                                             node.borrow().get_type()).into());
-                                }
-                                version = node.borrow().version;
-                            }
-                            continue;
-                        } else {
-                            return Err(ErrorKind::DoesNotExist(path).into());
-                        }
-                    }
-                    return Err(ErrorKind::InvalidPathContent(node.borrow().path.clone()).into());
-                }
-            }
+            let path = try!(validate_path(&path));
+            let (node, tree) = try!(self.find_mut(&path, NodeType::Blob));
+            node.content = Content::Container(Container::Blob(Blob { data: val }));
             let reply = Reply {
-                path: path.clone(), // TODO: remove this clone
-                version: version,
+                // Return the normalized string (trailing slashes removed) as done here?
+                path: path.to_string(),
+                version: node.version,
                 value: Value::None
             };
-            return Ok((reply, Some(Tree {root: root})));
+            return Ok((reply, Some(tree)));
         }
         unreachable!();
     }
@@ -280,10 +248,7 @@ impl Tree {
                     if let Ok(index) = edges.binary_search_by_key(&s, |e| &e.label) {
                         if iter.peek().is_none() {
                             let node = &(*edges.get_unchecked(index).node.as_ptr());
-                            let node_ty = node.get_type();
-                            if node_ty != ty {
-                                return Err(ErrorKind::WrongType(node.path.clone(), node_ty).into());
-                            }
+                            try!(verify_type(node, ty));
                             return Ok((&node.content, node.version))
                         }
                         parent = &edges.get_unchecked(index).node;
@@ -295,6 +260,56 @@ impl Tree {
         }
         unreachable!();
     }
+
+    /// Walk the tree until the desired node at `path` is found.
+    ///
+    /// Copy the entire path to create a new tree. Return a mutable refernce to the Node at
+    /// `path` along with the new Tree on success. Return an error if any part of the path doesn't
+    /// exist or the node at `path` is of the wrong type.
+    fn find_mut(&self, path: &str, ty: NodeType) -> Result<(&mut Node, Tree)> {
+        let root = cow_node(&self.root);
+        let mut node = root.clone();
+        let mut iter = path.split('/').peekable();
+        while let Some(s) = iter.next() {
+            unsafe {
+                if let Content::Directory(ref mut edges) = (*node.as_ptr()).content {
+                    if let Ok(index) = edges.binary_search_by_key(&s, |e| &e.label) {
+                        let mut edge = edges.get_unchecked_mut(index);
+                        node = cow_node(&edge.node);
+                        edge.node = node.clone();
+                        if iter.peek().is_none() {
+                            try!(verify_type(&*node.borrow(), ty));
+                            return Ok((&mut *node.as_ptr(), Tree {root: root, depth: self.depth}))
+                        }
+                        continue;
+                    } else {
+                        let path = join_path(&node.borrow().path, s);
+                        return Err(ErrorKind::DoesNotExist(path).into());
+                    }
+                }
+            }
+            return Err(ErrorKind::InvalidPathContent(node.borrow().path.clone()).into());
+        }
+        unreachable!();
+    }
+}
+
+fn verify_type(node: &Node, ty: NodeType) -> Result<()> {
+    let node_ty = node.get_type();
+    if node_ty != ty {
+        return Err(ErrorKind::WrongType(node.path.clone(), node_ty).into());
+    }
+    Ok(())
+}
+
+fn join_path(dir_path: &str, label: &str) -> String {
+    let mut path = dir_path.to_string();
+    if path.len() != 1 {
+        // We aren't at the root.
+        path.push_str("/");
+    }
+    path.push_str(label);
+    path
 }
 
 /// Directories contain a list of labels for each edge
@@ -342,17 +357,113 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
+/// Iterate over a tree in order, taking the shrotest path required to return each node in `paths`.
+/// Along the way copy any paths necessary to build up a new tree that allows modifications to each
+/// node in paths.
+struct CowLeafIter<'a> {
+    root: Arc<RefCell<Node>>,
+    paths: Vec<&'a str>,
+    stack: Vec<&'a Arc<RefCell<Node>>>
+}
+
+
+/// Iterate over a tree in order, taking the shortest path required to return each node in `paths`.
+pub struct PathIter<'a> {
+    paths: Vec<&'a str>,
+    stack: Vec<&'a Node>
+}
+
+impl<'a> PathIter<'a> {
+    /// Create a new iterator for a set of given paths
+    ///
+    /// Allocate a stack to the max depth of the tree, so we don't need to resize it.
+    pub fn new(root: &'a Arc<RefCell<Node>>,
+               mut paths: Vec<&'a str>,
+               max_depth: usize) -> PathIter<'a>
+    {
+        paths.sort();
+        paths.dedup();
+        paths.reverse();
+        let mut stack = Vec::with_capacity(max_depth);
+        unsafe {
+            stack.push(&*root.as_ptr());
+        }
+        PathIter {
+            paths: paths,
+            stack: stack
+        }
+    }
+
+    /// Walk the tree to find the node living at `path`
+    fn walk(&mut self) -> Result<&'a Node> {
+        let path = self.paths.pop().unwrap();
+        loop {
+            let mut node = *self.stack.last().unwrap();
+            if path.starts_with(&node.path) {
+                let num_labels = node.path.split('/').skip_while(|&s| s == "").count();
+                let mut split = path.split('/').skip_while(|&s| s == "").skip(num_labels);
+                while let Some(label) = split.next() {
+                    if label == "" {
+                        // Skip Trailing slashes
+                        continue;
+                    }
+                    let child_node = try!(get_child(&node, &label));
+                    // Extend the lifetime of &child_node via unsafe
+                    unsafe {
+                        node = &*child_node.as_ptr();
+                    }
+                    // Push the child on the stack
+                    self.stack.push(node);
+                }
+                return Ok(self.stack.last().unwrap());
+            }
+            // No matching prefix, back up the tree
+            self.stack.pop();
+        }
+    }
+}
+
+impl<'a> Iterator for PathIter<'a> {
+    type Item = Result<&'a Node>;
+    fn next(&mut self) -> Option<Result<&'a Node>> {
+        if self.paths.len() == 0{
+            return None;
+        }
+        Some(self.walk())
+    }
+
+}
+
+fn get_child<'a>(node: &'a Node, label: &'a str) -> Result<&'a Arc<RefCell<Node>>> {
+    if let Content::Directory(ref edges) = node.content {
+        match edges.binary_search_by_key(&label, |e| &e.label) {
+            Ok(index) => {
+                unsafe {
+                    return Ok(&edges.get_unchecked(index).node);
+                }
+            },
+            Err(_) => {
+                let mut path = node.path.clone();
+                if &path != "/" {
+                    path.push_str("/");
+                }
+                path.push_str(label);
+                return Err(ErrorKind::DoesNotExist(path).into());
+            }
+        }
+    }
+    Err(ErrorKind::InvalidPathContent(node.path.clone()).into())
+}
+
+
 /// Check for a leading slash and at least one level of depth in path.
 ///
 /// Strip leading and trailing slashes and return normalized path as String
-fn validate_path<S>(path: S) -> Result<String>
-    where S: Into<String>
-{
-    let path = path.into();
+fn validate_path(path: &str) -> Result<&str> {
     if !path.starts_with("/") {
         return Err(ErrorKind::BadPath(format!("{} does not start with a '/'", path)).into())
     }
-    let path = path.trim_matches('/').to_string();
+    let path = path.trim_matches('/');
     if path.len() == 0 {
         return Err(ErrorKind::BadPath("Path must contain at least one component".to_string())
                    .into());
@@ -362,12 +473,10 @@ fn validate_path<S>(path: S) -> Result<String>
 
 fn insert_dir(parent: Arc<RefCell<Node>>, label: &str) -> Result<Arc<RefCell<Node>>>
 {
-    let mut path = parent.borrow().path.clone();
-    if path.len() != 1 {
-        // We aren't at the root.
-        path.push_str("/");
-    }
-    path.push_str(label);
+    // avoid a copy
+    let parent_path = unsafe {
+        &(*parent.as_ptr()).path
+    };
     let mut parent = parent.borrow_mut();
     if let Content::Directory(ref mut edges) = parent.content {
         match edges.binary_search_by_key(&label, |e| &e.label) {
@@ -390,6 +499,7 @@ fn insert_dir(parent: Arc<RefCell<Node>>, label: &str) -> Result<Arc<RefCell<Nod
             Err(index) => {
                 let content = Content::new(NodeType::Directory);
                 // Edge doesn't exist, let's create it in the proper sort position
+                let path = join_path(parent_path, label);
                 let edge = Edge::new(label, Node::new(path, content));
                 let node = edge.node.clone();
                 edges.insert(index, edge);
@@ -401,12 +511,7 @@ fn insert_dir(parent: Arc<RefCell<Node>>, label: &str) -> Result<Arc<RefCell<Nod
 }
 
 fn insert_leaf(parent: Arc<RefCell<Node>>, label: &str, ty: NodeType) -> Result<()> {
-    let mut path = parent.borrow().path.clone();
-    if path.len() != 1 {
-        // We aren't at the root.
-        path.push_str("/");
-    }
-    path.push_str(label);
+    let path = join_path(&parent.borrow().path, label);
     if let Content::Directory(ref mut edges) = parent.borrow_mut().content {
         // Assume sorted vec
         if let Err(index) = edges.binary_search_by_key(&label, |e| &e.label) {
@@ -520,5 +625,25 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn path_iter() {
+        let tree = Tree::new();
+        let tree = tree.create("/somenode", NodeType::Directory).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue).unwrap();
+
+        let mut paths = vec!["/somenode/somechildnode",
+                             "/somedir1/somedir2",
+                             "/somedir1/somedir2/leaf",
+                             "/somenode/"];
+
+
+        let iter = PathIter::new(&tree.root, paths.clone(), tree.depth);
+        let collected: Vec<&str> = iter.map(|node| &node.unwrap().path as &str).collect();
+        paths.sort();
+        let paths: Vec<&str> = paths.iter().map(|p| p.trim_right_matches('/')).collect();
+        assert_eq!(paths, collected);
     }
 }

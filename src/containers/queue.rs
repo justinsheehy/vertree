@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Queue {
     data: VecDeque<Vec<u8>>
 }

@@ -40,6 +40,31 @@ impl Content {
         }
         false
     }
+
+    /// Return a reference to the blob if the content contains a blob, None otherwise
+    pub fn get_blob(&self) -> Option<&Blob> {
+        if let Content::Container(Container::Blob(ref blob)) = *self {
+            return Some(blob);
+        }
+        None
+    }
+
+    /// Return a reference to the queue if the content contains a queue, None otherwise
+    pub fn get_queue(&self) -> Option<&Queue> {
+        if let Content::Container(Container::Queue(ref queue)) = *self {
+            return Some(queue);
+        }
+        None
+    }
+
+    /// Return a reference to the set if the content contains a set, None otherwise
+    pub fn get_set(&self) -> Option<&Set> {
+        if let Content::Container(Container::Set(ref set)) = *self {
+            return Some(set);
+        }
+        None
+    }
+
 }
 
 /// A single entry in the contents of an interior node
@@ -354,7 +379,8 @@ impl<'a> Iterator for Iter<'a> {
 /// Iterate over a tree in order, taking the shrotest path required to return each node in `paths`.
 /// Along the way copy any paths necessary to build up a new tree that allows modifications to each
 /// node in paths.
-struct CowPathIter<'a> {
+pub struct CowPathIter<'a> {
+    tree: Tree,
     paths: Vec<&'a str>,
     stack: Vec<*mut Node>
 }
@@ -371,6 +397,7 @@ impl<'a> CowPathIter<'a> {
         let root = cow_node(root);
         stack.push(root.as_ptr());
         CowPathIter {
+            tree: Tree {root: root, depth: max_depth},
             paths: paths,
             stack: stack
         }
@@ -405,8 +432,16 @@ impl<'a> CowPathIter<'a> {
             }
         }
     }
+
+    /// Once `next` returns None a complete tree has been assembled. It can be retrieved via a call
+    /// to `get_tree`.
+    pub fn get_tree(&self) -> Tree {
+        self.tree.clone()
+    }
 }
 
+// TODO: Would it actually make sense to *only* return the content here?
+// The caller should never modify the path or version
 impl<'a> Iterator for CowPathIter<'a> {
     type Item = Result<&'a mut Node>;
     fn next(&mut self) -> Option<Result<&'a mut Node>> {
@@ -610,7 +645,7 @@ fn cow_node(node: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>> {
 mod tests {
     use super::*;
     use errors::*;
-    use containers::Container;
+    use containers::*;
 
     #[test]
     fn create_nodes() {
@@ -716,5 +751,69 @@ mod tests {
         paths.sort();
         let paths: Vec<&str> = paths.iter().map(|p| p.trim_right_matches('/')).collect();
         assert_eq!(paths, collected);
+    }
+
+    #[test]
+    fn bad_path_iter() {
+        let tree = Tree::new();
+        let tree = tree.create("/somenode", NodeType::Directory).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue).unwrap();
+
+        let paths = vec!["/somenode/somechildnode", "/zzz"];
+
+        let mut iter = PathIter::new(&tree.root, paths, tree.depth);
+        assert_matches!(iter.next(), Some(Ok(_)));
+        assert_matches!(iter.next(), Some(Err(_)));
+        assert_matches!(iter.next(), None);
+    }
+
+    #[test]
+    fn cow_path_iter() {
+        let tree = Tree::new();
+        let tree = tree.create("/somenode", NodeType::Directory).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Blob).unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Blob).unwrap();
+
+        // 3 create calls were made
+        assert_eq!(3, tree.root.borrow().version);
+
+        let mut paths = vec!["/somenode/somechildnode",
+                             "/somedir1/somedir2/leaf"];
+        let mut iter = CowPathIter::new(&tree.root, paths.clone(), tree.depth);
+
+        for node in iter.by_ref() {
+            let blob = Blob { data: "hello".to_string().into_bytes() };
+            node.unwrap().content = Content::Container(Container::Blob(blob));
+        }
+
+        let cow_tree = iter.get_tree();
+
+        // Original tree still unchanged
+        assert_eq!(3, tree.root.borrow().version);
+
+        // Mutation is optimal for CowPathIter even when copying multiple paths. Therefore,
+        // the root version count is only incremented once.
+        assert_eq!(4, cow_tree.root.borrow().version);
+
+        // Iterate the original tree and show the empty blobs
+        let mut iter = PathIter::new(&tree.root, paths.clone(), tree.depth);
+        for node in iter {
+            let node = node.unwrap();
+            let blob = node.content.get_blob().unwrap();
+            assert_eq!(*blob, Blob::new());
+            assert_eq!(node.version, 0);
+        }
+
+        // Iterate the modified tree and show "hello"
+        let mut iter = PathIter::new(&cow_tree.root, paths.clone(), tree.depth);
+        for node in iter {
+            let node = node.unwrap();
+            let blob = node.content.get_blob().unwrap();
+            assert_eq!(&blob.data[..], "hello".as_bytes());
+            // Each node was only modified once
+            assert_eq!(node.version, 1);
+        }
+
     }
 }

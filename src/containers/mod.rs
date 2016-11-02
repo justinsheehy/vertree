@@ -7,7 +7,7 @@ pub use self::queue::{Queue, QueueOp};
 pub use self::set::{Set, SetOp};
 
 /// The type of a leaf node that holds data
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Container {
     Blob(Blob),
     Queue(Queue),

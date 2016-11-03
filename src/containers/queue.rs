@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
+use super::Blob;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Queue {
-    data: VecDeque<Vec<u8>>
+    data: VecDeque<Blob>
 }
 
 impl Queue {
@@ -12,25 +14,25 @@ impl Queue {
     }
 
     /// Append an element onto the back of the queue
-    pub fn push(&mut self, element: Vec<u8>) {
+    pub fn push(&mut self, element: Blob) {
         self.data.push_back(element);
     }
 
     /// Remove the element at the front of the queue and return it
     /// Returns `None` if empty
-    pub fn pop(&mut self) -> Option<Vec<u8>> {
+    pub fn pop(&mut self) -> Option<Blob> {
         self.data.pop_front()
     }
 
     /// Return a reference to the element at the front of the queue
     /// Returns `None` if empty
-    pub fn front(&self) -> Option<&Vec<u8>> {
+    pub fn front(&self) -> Option<&Blob> {
         self.data.front()
     }
 
     /// Return a reference to the element at the back of the queue
     /// Returns `None` if empty
-    pub fn back(&self) -> Option<&Vec<u8>> {
+    pub fn back(&self) -> Option<&Blob> {
         self.data.front()
     }
 
@@ -44,7 +46,7 @@ impl Queue {
 pub enum QueueOp {
     Push {
         path: String,
-        val: Vec<u8>
+        val: Blob
     },
     Pop {
         path: String

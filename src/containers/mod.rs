@@ -55,6 +55,7 @@ impl Op {
 pub enum Value<'a> {
     Blob(&'a Blob),
     Set(&'a Set),
+    OwnedSet(Set),
     Int(usize),
     Bool(bool),
     None
@@ -63,7 +64,7 @@ pub enum Value<'a> {
 /// The result of running an operation
 #[derive(Clone, Debug)]
 pub struct Reply<'a> {
-    pub path: String,
-    pub version: usize,
+    pub path: Option<String>,
+    pub version: Option<usize>,
     pub value: Value<'a>
 }

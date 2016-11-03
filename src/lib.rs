@@ -14,6 +14,7 @@ pub mod containers;
 
 use std::sync::Arc;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use errors::*;
 use containers::{Container, Blob, BlobOp, Queue, QueueOp, Set, SetOp, Value, Reply, Op};
 
@@ -178,17 +179,21 @@ impl Tree {
         }
     }
 
+    pub fn path_iter<'a>(&'a self, paths: Vec<&'a str>) -> PathIter<'a> {
+        PathIter::new(&self.root, paths, self.depth)
+    }
+
     /// Run an operation on parts of the tree.
     ///
-    /// This operation may utilize multiple nodes in the tree.
+    /// An operation may utilize multiple nodes in the tree.
     /// Readable operations don't perform any copies or allocations.
     /// Writable operations perform path copies and return the new tree.
     pub fn run(&self, op: Op) -> Result<(Reply, Option<Tree>)> {
         if op.is_write() {
             return self.update(op);
         }
-        let replies = try!(self.read(op));
-        Ok((replies, None))
+        let reply = try!(self.read(op));
+        Ok((reply, None))
     }
 
     fn update(&self, op: Op) -> Result<(Reply, Option<Tree>)> {
@@ -201,9 +206,8 @@ impl Tree {
     fn read(&self, op: Op) -> Result<Reply> {
         match op {
             Op::Blob(op) => self.read_blob(op),
-            _ => unreachable!()
-//            Op:Queue(op) => read_queue(&self, op),
-//            Op:Set(op) => read_set(&self, op)
+            Op::Queue(op) => self.read_queue(op),
+            Op::Set(op) => self.read_set(op)
         }
     }
 
@@ -214,8 +218,8 @@ impl Tree {
             node.content = Content::Container(Container::Blob(Blob { data: val }));
             let reply = Reply {
                 // Return the normalized string (trailing slashes removed) as done here?
-                path: path.to_string(),
-                version: node.version,
+                path: Some(path.to_string()),
+                version: Some(node.version),
                 value: Value::None
             };
             return Ok((reply, Some(tree)));
@@ -228,16 +232,16 @@ impl Tree {
             BlobOp::Get {path} => {
                 let (blob, version) = try!(self.find_blob(&path));
                 Reply {
-                    path: path,
-                    version: version,
+                    path: Some(path),
+                    version: Some(version),
                     value: Value::Blob(blob)
                 }
             },
             BlobOp::Len {path} => {
                 let (blob, version) = try!(self.find_blob(&path));
                 Reply  {
-                    path: path,
-                    version: version,
+                    path: Some(path),
+                    version: Some(version),
                     value: Value::Int(blob.len())
                 }
             },
@@ -246,12 +250,150 @@ impl Tree {
         Ok(reply)
     }
 
+    fn read_queue(&self, op: QueueOp) -> Result<Reply> {
+        let reply = match op {
+            QueueOp::Front {path} => {
+                let (queue, version) = try!(self.find_queue(&path));
+                Reply {
+                    path: Some(path),
+                    version: Some(version),
+                    value: queue.front().map_or(Value::None, |b| Value::Blob(b))
+                }
+            },
+            QueueOp::Back {path} => {
+                let (queue, version) = try!(self.find_queue(&path));
+                Reply {
+                    path: Some(path),
+                    version: Some(version),
+                    value: queue.back().map_or(Value::None, |b| Value::Blob(b))
+                }
+            },
+            QueueOp::Len {path} => {
+                let (queue, version) = try!(self.find_queue(&path));
+                Reply {
+                    path: Some(path),
+                    version: Some(version),
+                    value: Value::Int(queue.len())
+                }
+            },
+            _ => unreachable!()
+        };
+        Ok(reply)
+    }
+
+    fn read_set(&self, op: SetOp) -> Result<Reply> {
+        match op {
+            SetOp::Contains { path, val } => {
+                let (set, version) = try!(self.find_set(&path));
+                Ok(Reply {
+                    path: Some(path),
+                    version: Some(version),
+                    value: Value::Bool(set.contains(&val))
+                })
+            },
+            SetOp::Subset { path1, path2, set } => {
+                self.subset_or_superset("Subset", path1, path2, set, |set1, set2| {
+                    set1.is_subset(set2)
+                })
+            },
+            SetOp::Superset { path1, path2, set } => {
+                self.subset_or_superset("Superset", path1, path2, set, |set1, set2| {
+                    set1.is_superset(set2)
+                })
+            },
+            SetOp::Union { paths, sets } => {
+                self.set_op(paths, sets, |set1, set2| {
+                    Set::fill(set1.union(set2).cloned().collect())
+                })
+            },
+            SetOp::Intersection { paths, sets } => {
+                self.set_op(paths, sets, |set1, set2| {
+                    Set::fill(set1.intersection(set2).cloned().collect())
+                })
+            },
+            SetOp::Difference { paths, sets } => {
+                self.set_op(paths, sets, |set1, set2| {
+                    Set::fill(set1.difference(set2).cloned().collect())
+                })
+            },
+            SetOp::SymmetricDifference { paths, sets } => {
+                self.set_op(paths, sets, |set1, set2| {
+                    Set::fill(set1.difference(set2).cloned().collect())
+                })
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn subset_or_superset<F>(&self,
+                             op: &str,
+                             path1: String,
+                             path2: Option<String>,
+                             set: Option<HashSet<Blob>>,
+                             f: F) -> Result<Reply>
+        where F: Fn(&Set, &Set) -> bool
+    {
+        if path2.is_some() && set.is_some() {
+            return Err(format!("{} can only operate on 2 sets.
+                                One of `path2` or `set` must be `None`", op).into())
+        }
+        let (set1, _) = try!(self.find_set(&path1));
+
+        let val = if path2.is_some() {
+            let (set2, _) = try!(self.find_set(&path2.unwrap()));
+            f(set1, set2)
+        } else {
+            f(set1, &Set::fill(set.unwrap()))
+
+        };
+
+        Ok(Reply {
+            path: None,
+            version: None,
+            value: Value::Bool(val)
+           })
+    }
+
+
+    fn set_op<F>(&self, paths: Vec<String>, sets: Vec<HashSet<Blob>>, f: F) -> Result<Reply>
+        where F: Fn(Set, &Set) -> Set
+    {
+        let iter = self.path_iter(paths.iter().map(|path| path as &str).collect());
+        let mut result = Set::new();
+        for node in iter {
+            let node = try!(node);
+            if let Some(set) = node.content.get_set() {
+                result = f(result, set);
+            } else {
+                return Err(ErrorKind::WrongType(node.path.clone(), node.get_type()).into());
+            }
+        }
+
+        for set in sets {
+            let set = Set::fill(set);
+            result = f(result, &set);
+        }
+
+        Ok(Reply {
+            path: None,
+            version: None,
+            value: Value::OwnedSet(result)
+        })
+    }
+
     fn find_blob(&self, path: &str) -> Result<(&Blob, usize)> {
         let (content, version) = try!(self.find(path, NodeType::Blob));
-        if let Content::Container(Container::Blob(ref blob)) = *content {
-            return Ok((blob, version));
-        }
-        unreachable!();
+        Ok((content.get_blob().unwrap(), version))
+    }
+
+    fn find_queue(&self, path: &str) -> Result<(&Queue, usize)> {
+        let (content, version) = try!(self.find(path, NodeType::Queue));
+        Ok((content.get_queue().unwrap(), version))
+    }
+
+    fn find_set(&self, path: &str) -> Result<(&Set, usize)> {
+        let (content, version) = try!(self.find(path, NodeType::Set));
+        Ok((content.get_set().unwrap(), version))
     }
 
     /// Walk the tree until the desired node at `path` is found.
@@ -778,8 +920,7 @@ mod tests {
         // 3 create calls were made
         assert_eq!(3, tree.root.borrow().version);
 
-        let mut paths = vec!["/somenode/somechildnode",
-                             "/somedir1/somedir2/leaf"];
+        let paths = vec!["/somenode/somechildnode", "/somedir1/somedir2/leaf"];
         let mut iter = CowPathIter::new(&tree.root, paths.clone(), tree.depth);
 
         for node in iter.by_ref() {
@@ -797,7 +938,7 @@ mod tests {
         assert_eq!(4, cow_tree.root.borrow().version);
 
         // Iterate the original tree and show the empty blobs
-        let mut iter = PathIter::new(&tree.root, paths.clone(), tree.depth);
+        let iter = PathIter::new(&tree.root, paths.clone(), tree.depth);
         for node in iter {
             let node = node.unwrap();
             let blob = node.content.get_blob().unwrap();
@@ -806,7 +947,7 @@ mod tests {
         }
 
         // Iterate the modified tree and show "hello"
-        let mut iter = PathIter::new(&cow_tree.root, paths.clone(), tree.depth);
+        let iter = PathIter::new(&cow_tree.root, paths.clone(), tree.depth);
         for node in iter {
             let node = node.unwrap();
             let blob = node.content.get_blob().unwrap();

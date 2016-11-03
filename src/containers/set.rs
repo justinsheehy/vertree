@@ -1,8 +1,9 @@
 use std::collections::HashSet;
+use super::Blob;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Set {
-    pub data: HashSet<Vec<u8>>
+    pub data: HashSet<Blob>
 }
 
 /// An abstract set datatype
@@ -18,20 +19,26 @@ impl Set {
         }
     }
 
+    pub fn fill(data: HashSet<Blob>) -> Set {
+        Set {
+            data: data
+        }
+    }
+
     /// Insert an element into the set.
     /// Returns `true` if the element was added, and `false` if it already existed in the set.
-    pub fn insert(&mut self, element: Vec<u8>) -> bool {
+    pub fn insert(&mut self, element: Blob) -> bool {
         self.data.insert(element)
     }
 
     /// Remove the element from the set
     /// Returns `true` if the value was present in the set, `false` otherwise
-    pub fn remove(&mut self, element: &Vec<u8>) -> bool {
+    pub fn remove(&mut self, element: &Blob) -> bool {
         self.data.remove(element)
     }
 
     /// Returns `true` if the element is in the set
-    pub fn contains(&mut self, element: &Vec<u8>) -> bool {
+    pub fn contains(&self, element: &Blob) -> bool {
         self.data.contains(element)
     }
 
@@ -40,14 +47,21 @@ impl Set {
     /// # Examples
     ///
     /// ```
-    /// use vertree::containers::Set;
+    /// use vertree::containers::{Set, Blob};
     ///
-    /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().collect() };
-    /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().collect() };
+    /// let a = Set { data: [Blob::fill(vec![1]),
+    ///                      Blob::fill(vec![2]),
+    ///                      Blob::fill(vec![3])].iter().cloned().collect() };
+    /// let b = Set { data: [Blob::fill(vec![2]),
+    ///                      Blob::fill(vec![3]),
+    ///                      Blob::fill(vec![4])].iter().cloned().collect() };
     ///
     /// assert_eq!(Set { data: a.union(&b).cloned().collect() },
-    ///            Set { data: [vec![1], vec![2], vec![3], vec![4]].iter().cloned().collect() });
-    pub fn union<'a>(&'a self, other: &'a Set) -> impl Iterator<Item=&'a Vec<u8>> {
+    ///            Set { data: [Blob::fill(vec![1]),
+    ///                         Blob::fill(vec![2]),
+    ///                         Blob::fill(vec![3]),
+    ///                         Blob::fill(vec![4])].iter().cloned().collect() });
+    pub fn union<'a>(&'a self, other: &'a Set) -> impl Iterator<Item=&'a Blob> {
         self.data.union(&other.data)
     }
 
@@ -56,14 +70,14 @@ impl Set {
     /// # Examples
     ///
     /// ```
-    /// use vertree::containers::Set;
+    /// use vertree::containers::{Set, Blob};
     ///
-    /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().collect() };
-    /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().collect() };
+    /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().map(|b| Blob::fill(b)).collect() };
+    /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().map(|b| Blob::fill(b)).collect() };
     ///
     /// let result = Set { data: a.intersection(&b).cloned().collect() };
-    /// assert_eq!(result, Set { data: [vec![2], vec![3]].iter().cloned().collect() });
-    pub fn intersection<'a>(&'a self, other: &'a Set) -> impl Iterator<Item=&'a Vec<u8>> {
+    /// assert_eq!(result, Set { data: [vec![2], vec![3]].iter().cloned().map(|b| Blob::fill(b)).collect() });
+    pub fn intersection<'a>(&'a self, other: &'a Set) -> impl Iterator<Item=&'a Blob> {
         self.data.intersection(&other.data)
     }
 
@@ -75,14 +89,14 @@ impl Set {
     /// # Examples
     ///
     /// ```
-    /// use vertree::containers::Set;
+    /// use vertree::containers::{Set, Blob};
     ///
-    /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().collect() };
-    /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().collect() };
+    /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().map(|b| Blob::fill(b)).collect() };
+    /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().map(|b| Blob::fill(b)).collect() };
     ///
     /// let result = Set { data: a.difference(&b).cloned().collect() };
-    /// assert_eq!(result, Set { data: [vec![1]].iter().cloned().collect() });
-    pub fn difference<'a>(&'a self, other: &'a Set) -> impl Iterator<Item=&'a Vec<u8>> {
+    /// assert_eq!(result, Set { data: [vec![1]].iter().cloned().map(|b| Blob::fill(b)).collect() });
+    pub fn difference<'a>(&'a self, other: &'a Set) -> impl Iterator<Item=&'a Blob> {
         self.data.difference(&other.data)
     }
 
@@ -94,17 +108,17 @@ impl Set {
     /// # Examples
     ///
     /// ```
-    /// use vertree::containers::Set;
+    /// use vertree::containers::{Set, Blob};
     ///
-    /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().collect() };
-    /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().collect() };
+    /// let a = Set { data: [vec![1], vec![2], vec![3]].iter().cloned().map(|b| Blob::fill(b)).collect() };
+    /// let b = Set { data: [vec![2], vec![3], vec![4]].iter().cloned().map(|b| Blob::fill(b)).collect() };
     ///
     /// let result_a = Set { data: a.symmetric_difference(&b).cloned().collect() };
     /// let result_b = Set { data: b.symmetric_difference(&a).cloned().collect() };
     /// assert_eq!(result_a, result_b);
     /// assert_eq!(result_a,
-    ///            Set { data: [vec![1], vec![4]].iter().cloned().collect() });
-    pub fn symmetric_difference<'a>(&'a self, other: &'a Set) -> impl Iterator<Item=&'a Vec<u8>> {
+    ///            Set { data: [vec![1], vec![4]].iter().cloned().map(|b| Blob::fill(b)).collect() });
+    pub fn symmetric_difference<'a>(&'a self, other: &'a Set) -> impl Iterator<Item=&'a Blob> {
         self.data.symmetric_difference(&other.data)
     }
 
@@ -124,36 +138,36 @@ impl Set {
 pub enum SetOp {
     Insert {
         path: String,
-        val: Vec<u8>
+        val: Blob
     },
     Remove {
         path: String,
-        val: Vec<u8>
+        val: Blob
     },
     Contains {
         path: String,
-        val: Vec<u8>
+        val: Blob
     },
     /// Union of all the sets in the nodes at `paths` and any sets passed in `sets`
     Union {
         paths: Vec<String>,
-        sets: Vec<HashSet<Vec<u8>>>
+        sets: Vec<HashSet<Blob>>
     },
     /// Intersection all the sets in the nodes at `paths` and any sets passed in `sets`
     Intersection {
         paths: Vec<String>,
-        sets: Vec<HashSet<Vec<u8>>>
+        sets: Vec<HashSet<Blob>>
     },
     /// Successively call set.difference on each path in `paths` followed by each set in `sets`
     Difference {
         paths: Vec<String>,
-        sets: Vec<HashSet<Vec<u8>>>
+        sets: Vec<HashSet<Blob>>
     },
     /// Successively call set.symmetric_difference on each path in `paths`
     /// followed by each set in `sets`
     SymmetricDifference {
         paths: Vec<String>,
-        sets: Vec<HashSet<Vec<u8>>>
+        sets: Vec<HashSet<Blob>>
     },
     /// Check to see if the set at `path1` is a subset of the set at `path2` or alternately a subset
     /// of the set passed in `set`. It is an error to have `Some()` variants for both `path2` and
@@ -161,7 +175,7 @@ pub enum SetOp {
     Subset {
         path1: String,
         path2: Option<String>,
-        set: Option<HashSet<Vec<u8>>>
+        set: Option<HashSet<Blob>>
     },
     /// Check to see if the set at `path1` is a subset of the set at `path2` or alternately a subset
     /// of the set passed in `set`. It is an error to have `Some()` variants for both `path2` and
@@ -169,7 +183,7 @@ pub enum SetOp {
     Superset {
         path1: String,
         path2: Option<String>,
-        set: Option<HashSet<Vec<u8>>>
+        set: Option<HashSet<Blob>>
     }
 }
 

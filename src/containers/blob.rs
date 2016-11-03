@@ -1,4 +1,4 @@
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Blob {
     pub data: Vec<u8>
 }
@@ -7,6 +7,12 @@ impl Blob {
     pub fn new() -> Blob {
         Blob {
             data: vec![]
+        }
+    }
+
+    pub fn fill(data: Vec<u8>) -> Blob {
+        Blob {
+            data: data
         }
     }
 

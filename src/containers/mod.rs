@@ -54,6 +54,7 @@ impl Op {
 #[derive(Clone, Debug)]
 pub enum Value<'a> {
     Blob(&'a Blob),
+    OwnedBlob(Blob),
     Set(&'a Set),
     OwnedSet(Set),
     Int(usize),

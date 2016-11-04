@@ -81,7 +81,6 @@ impl Content {
         }
         None
     }
-
 }
 
 /// A single entry in the contents of an interior node
@@ -216,7 +215,7 @@ impl Tree {
         match op {
             Op::Blob(op) => self.write_blob(op),
             Op::Queue(op) => self.write_queue(op),
-            _ => unreachable!()
+            Op::Set(op) => self.write_set(op)
         }
     }
 
@@ -269,12 +268,43 @@ impl Tree {
         }
     }
 
-   fn get_queue_mut(&self, path: &str) -> Result<(&mut Queue, usize, Tree)> {
-       let path = try!(validate_path(&path));
-       let (node, tree) = try!(self.find_mut(&path, NodeType::Queue));
-       let mut queue = node.content.get_queue_mut().unwrap();
-       Ok((queue, node.version, tree))
-   }
+    fn write_set(&self, op: SetOp) -> Result<(Reply, Option<Tree>)> {
+        match op {
+            SetOp::Insert { path, val } => {
+                let (mut set, version, tree) = try!(self.get_set_mut(&path));
+                let reply = Reply {
+                    path: Some(path),
+                    version: Some(version),
+                    value: Value::Bool(set.insert(val))
+                };
+                Ok((reply, Some(tree)))
+            },
+            SetOp::Remove { path, val } => {
+                let (mut set, version, tree) = try!(self.get_set_mut(&path));
+                let reply = Reply {
+                    path: Some(path),
+                    version: Some(version),
+                    value: Value::Bool(set.remove(&val))
+                };
+                Ok((reply, Some(tree)))
+            },
+            _ => unreachable!()
+        }
+    }
+
+    fn get_queue_mut(&self, path: &str) -> Result<(&mut Queue, usize, Tree)> {
+        let path = try!(validate_path(&path));
+        let (node, tree) = try!(self.find_mut(&path, NodeType::Queue));
+        let mut queue = node.content.get_queue_mut().unwrap();
+        Ok((queue, node.version, tree))
+    }
+
+    fn get_set_mut(&self, path: &str) -> Result<(&mut Set, usize, Tree)> {
+        let path = try!(validate_path(&path));
+        let (node, tree) = try!(self.find_mut(&path, NodeType::Set));
+        let mut queue = node.content.get_set_mut().unwrap();
+        Ok((queue, node.version, tree))
+    }
 
     fn read_blob(&self, op: BlobOp) -> Result<Reply> {
         let reply = match op {

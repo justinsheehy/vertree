@@ -2,6 +2,9 @@
 // See https://github.com/rust-lang/rust/issues/34511
 #![feature(conservative_impl_trait)]
 
+// Used by serde
+#![feature(proc_macro)]
+
 #[macro_use]
 extern crate error_chain;
 
@@ -9,14 +12,32 @@ extern crate error_chain;
 #[macro_use]
 extern crate assert_matches;
 
+extern crate rmp as msgpack;
+
+#[macro_use]
+extern crate serde_derive;
+
+
 mod errors;
 pub mod containers;
 
 use std::sync::Arc;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use errors::*;
+use std::io::{Read, Seek, SeekFrom};
+use std::error::Error;
+use std::fs::File;
+use errors::{Result, ErrorKind};
 use containers::{Container, Blob, BlobOp, Queue, QueueOp, Set, SetOp, Value, Reply, Op};
+
+// Types of Content - Used for msgpack serialization
+const DIRECTORY_TYPE_ID: u8 = 0;
+const CONTAINER_TYPE_ID: u8 = 1;
+
+// Types of containers - Used for msgpack serialization
+const BLOB_TYPE_ID: u8 = 0;
+const QUEUE_TYPE_ID: u8 = 1;
+const SET_TYPE_ID: u8 = 2;
 
 /// The contents of a Node
 #[derive(Clone, Debug)]
@@ -209,6 +230,25 @@ impl Tree {
         }
         let reply = try!(self.read(op));
         Ok((reply, None))
+    }
+
+    /// Write a snapshot of a tree to the directory `dir` in MsgPack format.
+    ///
+    /// Return the number of nodes written on success.
+    ///
+    /// The format of a filename is vertree_<RootVersion>.tree
+    /// Note that taking a snapshot of an identical tree will overwrite the previously written file.
+    pub fn snapshot<F>(&self, dir: &str) -> Result<(usize)> {
+        let dir = dir.trim_right_matches("/");
+        let filename = format!("{}/vertree_{}.tree", dir, self.root.borrow().version);
+        let mut f = try!(File::create(filename));
+        let iter = self.iter();
+        let mut count = 0;
+        for node in iter {
+           count += 1;
+           try!(write_node(&mut f, &node));
+        }
+        Ok(count)
     }
 
     fn update(&self, op: Op) -> Result<(Reply, Option<Tree>)> {
@@ -861,6 +901,139 @@ fn cow_node(node: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>> {
     Arc::make_mut(&mut new_node).borrow_mut().version += 1;
     new_node
 }
+
+/// Read a msgpack encoded IterNode from a file and return a Node based on it
+///
+/// Since directories contain child pointers in Nodes, but not in IterNodes, this function allocates
+/// a properly sized vector for directory entries (edges) but leaves it empty. It will be filled in
+/// when reconstructing the tree.
+fn read_node(file: &mut File) -> Result<Node> {
+    let path_len = try!(msgpack::decode::read_str_len(file));
+    let mut path_buf = vec![0u8; path_len as usize];
+    let path = try!(msgpack::decode::read_str_data(file, path_len, &mut path_buf).map_err(|e| {
+        e.description().to_string()
+    }));
+    let version = try!(msgpack::decode::read_u64_loosely(file));
+    let content = try!(read_content(file));
+    Ok(Node {
+        path: path.to_string(),
+        version: version as usize,
+        content: content
+    })
+}
+
+fn read_content(file: &mut File) -> Result<Content> {
+    let content_type = try!(msgpack::decode::read_u8(file));
+    match content_type {
+        DIRECTORY_TYPE_ID => {
+            let len = try!(msgpack::decode::read_array_size(file));
+            for _ in 0..len {
+                // Discard the labels. We will proprly fill in the edges and create pointers when we
+                // reconstuct the tree. Reading them in now and decoding as utf-8 is wasteful.
+                let str_len = try!(msgpack::decode::read_str_len(file));
+                try!(file.seek(SeekFrom::Current(str_len as i64)));
+            }
+            Ok(Content::Directory(Vec::with_capacity(len as usize)))
+        },
+        CONTAINER_TYPE_ID => {
+            let container = try!(read_container(file));
+            Ok(Content::Container(container))
+        },
+        _ => unreachable!()
+    }
+}
+
+fn read_container(file: &mut File) -> Result<Container> {
+    let container_type = try!(msgpack::decode::read_u8(file));
+    match container_type {
+        BLOB_TYPE_ID => {
+            let blob = try!(read_blob(file));
+            Ok(Container::Blob(blob))
+        },
+        QUEUE_TYPE_ID => {
+            let len = try!(msgpack::decode::read_array_size(file));
+            let mut queue = Queue::with_capacity(len as usize);
+            for _ in 0..len {
+                let blob = try!(read_blob(file));
+                queue.push(blob)
+            }
+            Ok(Container::Queue(queue))
+        },
+        SET_TYPE_ID => {
+            let len = try!(msgpack::decode::read_array_size(file));
+            let mut set = Set::with_capacity(len as usize);
+            for _ in 0..len {
+                let blob = try!(read_blob(file));
+                let _ = set.insert(blob);
+            }
+            Ok(Container::Set(set))
+        },
+        _ => unreachable!()
+    }
+}
+
+fn read_blob(file: &mut File) -> Result<Blob> {
+    let len = try!(msgpack::decode::read_bin_len(file));
+    let mut buf = vec![0u8; len as usize];
+    try!(file.read_exact(&mut buf));
+    Ok(Blob::fill(buf))
+}
+
+/// Serialize an IterNode and write it to the given file
+///
+/// This function uses the low level msgpack functions directly to avoid allocation
+fn write_node(file: &mut File, node: &IterNode) -> Result<()> {
+    try!(msgpack::encode::write_str_len(file, node.path.len() as u32));
+    try!(msgpack::encode::write_str(file, node.path));
+    try!(msgpack::encode::write_uint(file, node.version as u64));
+    match node.content {
+        IterContent::Directory(ref labels) => {
+            try!(msgpack::encode::write_u8(file, DIRECTORY_TYPE_ID));
+            try!(msgpack::encode::write_array_len(file, labels.len() as u32));
+            for label in labels {
+                try!(msgpack::encode::write_str_len(file, label.len() as u32));
+                try!(msgpack::encode::write_str(file, label));
+            }
+        },
+        IterContent::Container(ref container) => {
+            try!(msgpack::encode::write_u8(file, CONTAINER_TYPE_ID));
+            try!(write_container(file, &container));
+        }
+    }
+    Ok(())
+}
+
+/// Serialize a Container and write it to the given file
+fn write_container(file: &mut File, container: &Container) -> Result<()> {
+    match *container {
+        Container::Blob(ref blob) => {
+            try!(msgpack::encode::write_u8(file, BLOB_TYPE_ID));
+            write_blob(file, blob)
+        },
+        Container::Queue(ref queue) => {
+            try!(msgpack::encode::write_u8(file, QUEUE_TYPE_ID));
+            try!(msgpack::encode::write_array_len(file, queue.len() as u32));
+            for blob in queue.data.iter() {
+                try!(write_blob(file, blob));
+            }
+            Ok(())
+        },
+        Container::Set(ref set) => {
+            try!(msgpack::encode::write_u8(file, SET_TYPE_ID));
+            try!(msgpack::encode::write_array_len(file, set.data.len() as u32));
+            for blob in set.data.iter() {
+                try!(write_blob(file, blob));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn write_blob(file: &mut File, blob: &Blob) -> Result<()> {
+    try!(msgpack::encode::write_bin_len(file, blob.len() as u32));
+    msgpack::encode::write_bin(file, &blob.data[..]).map_err(|e| e.into())
+}
+
 
 #[cfg(test)]
 mod tests {

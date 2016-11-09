@@ -20,7 +20,7 @@ impl Blob {
         self.data = data;
     }
 
-    pub fn get(&mut self) -> &Vec<u8> {
+    pub fn get(&self) -> &Vec<u8> {
         &self.data
     }
 

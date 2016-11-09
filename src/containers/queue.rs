@@ -3,13 +3,19 @@ use super::Blob;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Queue {
-    data: VecDeque<Blob>
+    pub data: VecDeque<Blob>
 }
 
 impl Queue {
     pub fn new() -> Queue {
         Queue {
             data: VecDeque::new()
+        }
+    }
+
+    pub fn with_capacity(size: usize) -> Queue {
+        Queue {
+            data: VecDeque::with_capacity(size)
         }
     }
 
@@ -42,7 +48,7 @@ impl Queue {
 }
 
 /// Operations on Queues
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueueOp {
     Push {
         path: String,

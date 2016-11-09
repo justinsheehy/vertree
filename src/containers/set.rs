@@ -19,6 +19,12 @@ impl Set {
         }
     }
 
+    pub fn with_capacity(size: usize) -> Set {
+        Set {
+            data: HashSet::with_capacity(size)
+        }
+    }
+
     pub fn fill(data: HashSet<Blob>) -> Set {
         Set {
             data: data
@@ -134,7 +140,7 @@ impl Set {
 }
 
 /// Operations on Sets
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SetOp {
     Insert {
         path: String,

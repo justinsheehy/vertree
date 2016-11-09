@@ -1,4 +1,4 @@
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Blob {
     pub data: Vec<u8>
 }
@@ -30,7 +30,7 @@ impl Blob {
 }
 
 /// Operations on Blobs
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BlobOp {
     Put {
         path: String,

@@ -1,4 +1,4 @@
-use super::NodeType;
+use node::NodeType;
 use std::io;
 use msgpack;
 

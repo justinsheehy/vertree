@@ -79,3 +79,24 @@ impl QueueOp {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use containers::{Blob};
+    #[test]
+    fn trivial_q() {
+        let mut q1 = Queue::new();
+        let val1 = String::from("val1").into_bytes();
+        let blob1 = Blob::fill(val1.clone());
+        let val2 = String::from("val2").into_bytes();
+        let blob2 = Blob::fill(val2.clone());
+        q1.push(blob1);
+        q1.push(blob2);
+        let res1 = q1.pop();
+        match res1 {
+            Some(ref r1) => assert_eq!(*(r1.get()), val1),
+            None => panic!("got None, expected Some for res1")
+        }
+    }
+}
+

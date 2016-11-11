@@ -1,7 +1,6 @@
 use msgpack::decode::{read_u32, read_u8, read_str_len, read_str_data, read_u64_loosely};
 use msgpack::decode::{read_array_size, read_bin_len, ValueReadError, ReadError};
-use msgpack::encode::{write_u32, write_u8, write_str_len, write_str, write_uint, write_array_len};
-use msgpack::encode::{write_bin_len, write_bin};
+use msgpack::encode::{write_u32, write_u8, write_str, write_uint, write_array_len, write_bin};
 
 use std::io::{Write, Read, Seek, SeekFrom};
 use std::error::Error;
@@ -25,14 +24,12 @@ const SET_TYPE_ID: u8 = 2;
 /// Write a snapshot to a Writer `W`
 ///
 /// Return the number of nodes written on success
-pub fn write<W: Write>(writer: &mut W, depth: u32, iter: Iter) -> Result<usize> {
+pub fn write<W: Write>(writer: &mut W, depth: u32, iter: Iter) -> Result<()> {
     try!(write_u32(writer, depth));
-    let mut count = 0;
     for node in iter {
-        count += 1;
         try!(write_node(writer, &node));
     }
-    Ok(count)
+    Ok(())
 }
 
 /// Load a tree from a Reader `R`
@@ -85,7 +82,6 @@ fn read_inner_nodes<R>(root: &Arc<RefCell<Node>>, reader: &mut R, depth: u32) ->
 ///
 /// This function uses the low level msgpack functions directly to avoid allocation
 fn write_node<W: Write>(writer: &mut W, node: &IterNode) -> Result<()> {
-    try!(write_str_len(writer, node.path.len() as u32));
     try!(write_str(writer, node.path));
     try!(write_uint(writer, node.version as u64));
     match node.content {
@@ -93,7 +89,6 @@ fn write_node<W: Write>(writer: &mut W, node: &IterNode) -> Result<()> {
             try!(write_u8(writer, DIRECTORY_TYPE_ID));
             try!(write_array_len(writer, labels.len() as u32));
             for label in labels {
-                try!(write_str_len(writer, label.len() as u32));
                 try!(write_str(writer, label));
             }
         },
@@ -115,7 +110,7 @@ fn read_node<R>(reader: &mut R) -> Result<Option<Node>> where R: Read + Seek {
         Ok(path_len) => {
             let mut path_buf = vec![0u8; path_len as usize];
             let path = try!(read_str_data(reader, path_len, &mut path_buf).map_err(|e| {
-                e.description().to_string()
+                e.cause().unwrap().to_string()
             }));
             let version = try!(read_u64_loosely(reader));
             let content = try!(read_content(reader));
@@ -214,8 +209,7 @@ fn write_container<W: Write>(writer: &mut W, container: &Container) -> Result<()
 }
 
 fn write_blob<W: Write>(writer: &mut W, blob: &Blob) -> Result<()> {
-    try!(write_bin_len(writer, blob.len() as u32));
-    write_bin(writer, &blob.data[..]).map_err(|e| e.into())
+    write_bin(writer, &blob.data).map_err(|e| e.into())
 }
 
 fn insert_edge(stack: &mut Vec<&Arc<RefCell<Node>>>, node: Arc<RefCell<Node>>) {
@@ -229,3 +223,56 @@ fn insert_edge(stack: &mut Vec<&Arc<RefCell<Node>>>, node: Arc<RefCell<Node>>) {
     edges.push(edge);
 }
 
+#[cfg(test)]
+mod tests {
+
+    use quickcheck::{Arbitrary, Gen};
+    use tree::Tree;
+    use node::NodeType;
+    use rand::distributions::range::Range;
+    use rand::distributions::IndependentSample;
+
+    #[derive(Debug, Clone)]
+    struct Path(String);
+
+    impl Arbitrary for Path {
+        fn arbitrary<G: Gen>(g: &mut G) -> Path {
+            let range = Range::new(1u8, 11u8);
+            let depth = range.ind_sample(g);
+            let labels = ['a', 'b', 'c', 'd', 'e'];
+            let mut path = String::with_capacity((depth*2 - 1) as usize);
+            path = (0..depth).fold(path, |mut acc, _| {
+                acc.push('/');
+                acc.push(*g.choose(&labels).unwrap());
+                acc
+            });
+            Path(path)
+        }
+    }
+
+    impl Arbitrary for NodeType {
+        fn arbitrary<G: Gen>(g: &mut G) -> NodeType {
+            g.choose(&[NodeType::Directory, NodeType::Queue, NodeType::Set, NodeType::Blob])
+             .unwrap().clone()
+        }
+    }
+
+    #[quickcheck]
+    /// Create a random tree, take a snapshot, and ensure reading it back in gives the same tree
+    fn prop_rountrip(node_specs: Vec<(Path, NodeType)>) -> bool {
+        let tree = node_specs.iter().fold(Tree::new(), |acc, &(ref path, ref node_type)| {
+            // Ignore failures. We may try to insert a node into a non-directory due to randomness
+            // of generation. It doesn't matter for this property.
+            match acc.create(&path.0, node_type.clone()) {
+                Ok(tree) => tree,
+                _ => acc
+            }
+        });
+        let filename = tree.snapshot("/tmp").unwrap();
+        let loaded_tree = Tree::load_snapshot(&filename).unwrap();
+        if tree.depth != loaded_tree.depth {
+            return false;
+        }
+        tree.iter().zip(loaded_tree.iter()).all(|(node1, node2)| node1 == node2)
+    }
+}

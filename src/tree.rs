@@ -83,15 +83,14 @@ impl Tree {
 
     /// Write a snapshot of a tree to the directory `dir` in MsgPack format.
     ///
-    /// Return the number of nodes written on success.
-    ///
     /// The format of a filename is vertree_<RootVersion>.tree
     /// Note that taking a snapshot of an identical tree will overwrite the previously written file.
-    pub fn snapshot(&self, dir: &str) -> Result<usize> {
+    pub fn snapshot(&self, dir: &str) -> Result<String> {
         let dir = dir.trim_right_matches("/");
         let filename = format!("{}/vertree_{}.tree", dir, self.root.borrow().version);
-        let mut f = try!(File::create(filename));
-        snapshot::write(&mut f, self.depth, self.iter())
+        let mut f = try!(File::create(&filename));
+        try!(snapshot::write(&mut f, self.depth, self.iter()));
+        Ok(filename)
     }
 
     /// Load a snapshot from the file at `file`

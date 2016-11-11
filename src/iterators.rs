@@ -17,11 +17,13 @@ pub fn cow_node(node: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>> {
 
 /// Directories contain a list of labels for each edge
 /// Containers are an actual reference to the Container and it's data
+#[derive(Eq, PartialEq)]
 pub enum IterContent<'a> {
     Directory(Vec<&'a str>),
     Container(&'a Container)
 }
 
+#[derive(Eq, PartialEq)]
 pub struct IterNode<'a> {
     pub path: &'a str,
     pub version: usize,

@@ -30,6 +30,15 @@
 // Used by serde
 #![feature(proc_macro)]
 
+#![cfg_attr(test, feature(plugin))]
+#![cfg_attr(test, plugin(quickcheck_macros))]
+
+#[cfg(test)]
+extern crate quickcheck;
+
+#[cfg(test)]
+extern crate rand;
+
 #[macro_use]
 extern crate error_chain;
 

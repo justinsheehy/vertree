@@ -12,3 +12,6 @@ rmp = "^0.7"
 
 [dev-dependencies]
 assert_matches = "1.0"
+quickcheck = "0.3"
+quickcheck_macros = "0.2"
+rand = "0.3"

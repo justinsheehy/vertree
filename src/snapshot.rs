@@ -226,6 +226,7 @@ fn insert_edge(stack: &mut Vec<&Arc<RefCell<Node>>>, node: Arc<RefCell<Node>>) {
 #[cfg(test)]
 mod tests {
 
+    use std::fs;
     use quickcheck::{Arbitrary, Gen};
     use tree::Tree;
     use node::NodeType;
@@ -270,6 +271,8 @@ mod tests {
         });
         let filename = tree.snapshot("/tmp").unwrap();
         let loaded_tree = Tree::load_snapshot(&filename).unwrap();
+        fs::remove_file(filename).unwrap();
+
         if tree.depth != loaded_tree.depth {
             return false;
         }

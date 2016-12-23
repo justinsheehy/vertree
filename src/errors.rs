@@ -26,10 +26,22 @@ error_chain! {
             description("path does not end in a directory")
             display("path does not end in a directory: '{}'", path)
         }
+        CasFailed {path: String, expected: u64, actual: u64} {
+            description("CAS failed")
+            display("CAS failed for {}: Expected {}, Actual {}", path, expected, actual)
+        }
         BadPath(msg: String) {
             description("path improperly formatted: must contain a leading slash and at least one
                          component")
             display("path improperly formatted: '{}'", msg)
+        }
+        CannotDeleteRoot {
+            description("Cannot delete root of tree")
+            display("Cannot delete root of tree")
+        }
+        PathMustBeAbsolute(path: String) {
+            description("Path must be absolute")
+            display("Path must be absolute: '{}'", path)
         }
     }
 }

@@ -6,12 +6,9 @@ authors = ["Justin Sheehy <justin@iago.org",
 
 [dependencies]
 error-chain = "0.5"
-serde = "0.8"
-serde_derive = "0.8"
 rmp = "^0.7"
 
 [dev-dependencies]
 assert_matches = "1.0"
 quickcheck = "0.3"
-quickcheck_macros = "0.2"
 rand = "0.3"

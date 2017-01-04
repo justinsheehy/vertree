@@ -27,14 +27,14 @@
 // See https://github.com/rust-lang/rust/issues/34511
 #![feature(conservative_impl_trait)]
 
-// Used by serde
-#![feature(proc_macro)]
-
-#![cfg_attr(test, feature(plugin))]
-#![cfg_attr(test, plugin(quickcheck_macros))]
+// Allow using Vec::dedup_by_key
+#![feature(dedup_by)]
 
 #[cfg(test)]
+#[macro_use]
 extern crate quickcheck;
+
+extern crate rmp as msgpack;
 
 #[cfg(test)]
 extern crate rand;
@@ -46,17 +46,18 @@ extern crate error_chain;
 #[macro_use]
 extern crate assert_matches;
 
-extern crate rmp as msgpack;
-
-#[macro_use]
-extern crate serde_derive;
+#[cfg(test)]
+mod arbitrary;
 
 mod errors;
 mod snapshot;
 mod tree;
 mod node;
-mod iterators;
+mod cas;
+pub mod iterators;
 pub mod containers;
 
 pub use errors::*;
-pub use tree::Tree;
+pub use tree::{Tree, Reply, Value};
+pub use node::NodeType;
+pub use cas::{WriteOp, Guard};

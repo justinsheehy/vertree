@@ -1,17 +1,17 @@
+use std::mem;
 use std::sync::Arc;
-use std::cell::RefCell;
 use tree::Tree;
 use node::{Node, Content};
 use errors::{Result, ErrorKind};
 use containers::Container;
 
 /// Deep clone a node and bump it's version
-pub fn cow_node(node: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>> {
+pub fn cow_node(node: &Arc<Node>) -> Arc<Node> {
     // Create a shallow copy of the node (inc ref count on Arc)
     let mut new_node = node.clone();
 
     // Force a deep copy on write copy and increment the version number
-    Arc::make_mut(&mut new_node).borrow_mut().version += 1;
+    Arc::make_mut(&mut new_node).version += 1;
     new_node
 }
 
@@ -26,17 +26,17 @@ pub enum IterContent<'a> {
 #[derive(Eq, PartialEq)]
 pub struct IterNode<'a> {
     pub path: &'a str,
-    pub version: usize,
+    pub version: u64,
     pub content: IterContent<'a>
 }
 
 /// An iterator that performs a depth first walk of the entire tree.
 pub struct Iter<'a> {
-    stack: Vec<&'a Arc<RefCell<Node>>>,
+    stack: Vec<&'a Arc<Node>>,
 }
 
 impl<'a> Iter<'a> {
-    pub fn new(root: &'a Arc<RefCell<Node>>) -> Iter<'a> {
+    pub fn new(root: &'a Arc<Node>) -> Iter<'a> {
         Iter {
             stack: vec![root]
         }
@@ -50,23 +50,20 @@ impl<'a> Iterator for Iter<'a> {
             return None;
         }
         let node = self.stack.pop().unwrap();
-        unsafe {
-            let ptr = node.as_ptr();
-            let content = match (*ptr).content {
-                Content::Directory(ref edges) => {
-                    self.stack.extend(edges.iter().rev().map(|edge| &edge.node));
-                    IterContent::Directory(edges.iter().map(|edge| &edge.label as &str).collect())
-                },
-                Content::Container(ref container) => {
-                    IterContent::Container(&container)
-                }
-            };
-            Some(IterNode {
-                path: &(*ptr).path,
-                version: (*ptr).version,
-                content: content
-            })
-        }
+        let content = match node.content {
+            Content::Directory(ref edges) => {
+                self.stack.extend(edges.iter().rev().map(|edge| &edge.node));
+                IterContent::Directory(edges.iter().map(|edge| &edge.label as &str).collect())
+            },
+            Content::Container(ref container) => {
+                IterContent::Container(&container)
+            }
+        };
+        Some(IterNode {
+            path: &node.path,
+            version: node.version,
+            content: content
+        })
     }
 }
 
@@ -80,7 +77,7 @@ pub struct CowPathIter<'a> {
 }
 
 impl<'a> CowPathIter<'a> {
-    pub fn new(root: &'a Arc<RefCell<Node>>,
+    pub fn new(root: &'a Arc<Node>,
                mut paths: Vec<&'a str>,
                max_depth: u32) -> CowPathIter<'a>
     {
@@ -89,7 +86,8 @@ impl<'a> CowPathIter<'a> {
         paths.reverse();
         let mut stack = Vec::with_capacity(max_depth as usize);
         let root = cow_node(root);
-        stack.push(root.as_ptr());
+        let ptr: *mut Node = unsafe { mem::transmute(&*root)} ;
+        stack.push(ptr);
         CowPathIter {
             tree: Tree {root: root, depth: max_depth},
             paths: paths,
@@ -107,7 +105,10 @@ impl<'a> CowPathIter<'a> {
         let path = self.paths.pop().unwrap();
         loop {
             unsafe {
-                let mut node = *self.stack.last().unwrap();
+                let mut node = match self.stack.last() {
+                    Some(node) => *node,
+                    None => return Err(ErrorKind::DoesNotExist(path.to_string()).into())
+                };
                 if path.starts_with(&(*node).path) {
                     let num_labels = (*node).path.split('/').skip_while(|&s| s == "").count();
                     let mut split = path.split('/').skip_while(|&s| s == "").skip(num_labels);
@@ -117,7 +118,8 @@ impl<'a> CowPathIter<'a> {
                             continue;
                         }
                         node = try!(cow_get_child(node, &label));
-                        self.stack.push(node);
+                        let ptr: *mut Node = &mut (*node);
+                        self.stack.push(ptr);
                     }
                     return Ok(&mut *node);
                 }
@@ -127,7 +129,7 @@ impl<'a> CowPathIter<'a> {
         }
     }
 
-    /// Once `next` returns None a complete tree has been assembled. It can be retrieved via a call
+    /// Once `next` returns `None` a complete tree has been assembled. It can be retrieved via a call
     /// to `get_tree`.
     pub fn get_tree(&self) -> Tree {
         self.tree.clone()
@@ -157,7 +159,7 @@ impl<'a> PathIter<'a> {
     /// Create a new iterator for a set of given paths
     ///
     /// Allocate a stack to the max depth of the tree, so we don't need to resize it.
-    pub fn new(root: &'a Arc<RefCell<Node>>,
+    pub fn new(root: &'a Arc<Node>,
                mut paths: Vec<&'a str>,
                max_depth: u32) -> PathIter<'a>
     {
@@ -165,9 +167,8 @@ impl<'a> PathIter<'a> {
         paths.dedup();
         paths.reverse();
         let mut stack = Vec::with_capacity(max_depth as usize);
-        unsafe {
-            stack.push(&*root.as_ptr());
-        }
+        let node_ref: &Node = &*root;
+        stack.push(node_ref);
         PathIter {
             paths: paths,
             stack: stack
@@ -178,11 +179,16 @@ impl<'a> PathIter<'a> {
     fn walk(&mut self) -> Result<&'a Node> {
         let path = self.paths.pop().unwrap();
         loop {
-            let mut node = *self.stack.last().unwrap();
+            let mut node = match self.stack.last() {
+                Some(node) => *node,
+                None => return Err(ErrorKind::DoesNotExist(path.to_string()).into())
+            };
             if path.starts_with(&node.path) {
                 let num_labels = node.path.split('/').skip_while(|&s| s == "").count();
                 let mut split = path.split('/').skip_while(|&s| s == "").skip(num_labels);
+                let mut depth_from_current_node = 0;
                 while let Some(label) = split.next() {
+                    depth_from_current_node += 1;
                     if label == "" {
                         // Skip Trailing slashes
                         continue;
@@ -191,7 +197,10 @@ impl<'a> PathIter<'a> {
                     // Push the child on the stack
                     self.stack.push(node);
                 }
-                return Ok(self.stack.last().unwrap());
+                if depth_from_current_node > 0 {
+                    // This path we are trying to find is a child of this node
+                    return Ok(self.stack.last().unwrap());
+                }
             }
             // No matching prefix, back up the tree
             self.stack.pop();
@@ -202,7 +211,7 @@ impl<'a> PathIter<'a> {
 impl<'a> Iterator for PathIter<'a> {
     type Item = Result<&'a Node>;
     fn next(&mut self) -> Option<Result<&'a Node>> {
-        if self.paths.len() == 0{
+        if self.paths.len() == 0 {
             return None;
         }
         Some(self.walk())
@@ -218,7 +227,8 @@ unsafe fn cow_get_child<'a>(node: *mut Node, label: &'a str) -> Result<*mut Node
             Ok(index) => {
                 let mut edge = edges.get_unchecked_mut(index);
                 edge.node = cow_node(&edge.node);
-                return Ok(edge.node.as_ptr());
+                let ptr: *mut Node = mem::transmute(&*edge.node);
+                return Ok(ptr);
             },
             Err(_) => {
                 let mut path = (*node).path.clone();
@@ -239,7 +249,7 @@ fn get_child<'a>(node: &'a Node, label: &'a str) -> Result<&'a Node> {
         match edges.binary_search_by_key(&label, |e| &e.label) {
             Ok(index) => {
                 unsafe {
-                    return Ok(&*edges.get_unchecked(index).node.as_ptr());
+                    return Ok(&*edges.get_unchecked(index).node);
                 }
             },
             Err(_) => {
@@ -261,6 +271,39 @@ mod tests {
     use tree::Tree;
     use node::*;
     use containers::*;
+    use arbitrary::Path;
+
+    quickcheck! {
+        // Walking any existing paths always succeeds.
+        fn prop_walk_existing_paths(node_specs: Vec<(Path, NodeType)>) -> bool {
+            // Get the new tree and any node_specs where create succeeded
+            let (tree, node_specs) =
+                node_specs.iter().fold((Tree::new(),
+                                        Vec::new()),
+                                        |(tree, mut specs), &(ref path, node_type)|
+                {
+                    match tree.create(&path.clone().0, node_type) {
+                        Ok(new_tree) => {
+                            specs.push((path.clone(), node_type));
+                            (new_tree, specs)
+                        },
+                        Err(_) => (tree, specs)
+                    }
+                });
+            if node_specs.len() as u64 != tree.root.version {
+                return false;
+            }
+
+            // Ensure we can find nodes at all inserted paths
+            if node_specs.iter().any(|&(ref path, ty)| tree.find(&path.0, ty).is_err()) {
+                return false;
+            }
+
+            // Ensure we can walk all inserted paths using a PathIter
+            let paths = node_specs.iter().map(|&(ref path, _)| &path.0 as &str).collect();
+            tree.path_iter(paths).count() == node_specs.len()
+        }
+    }
 
     #[test]
     fn create_nodes_iter_check() {
@@ -338,31 +381,31 @@ mod tests {
         let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Blob).unwrap();
 
         // 3 create calls were made
-        assert_eq!(3, tree.root.borrow().version);
+        assert_eq!(3, tree.root.version);
 
         let paths = vec!["/somenode/somechildnode", "/somedir1/somedir2/leaf"];
         let mut iter = CowPathIter::new(&tree.root, paths.clone(), tree.depth);
 
         for node in iter.by_ref() {
-            let blob = Blob { data: "hello".to_string().into_bytes() };
+            let blob = "hello".to_string().into_bytes();
             node.unwrap().content = Content::Container(Container::Blob(blob));
         }
 
         let cow_tree = iter.get_tree();
 
         // Original tree still unchanged
-        assert_eq!(3, tree.root.borrow().version);
+        assert_eq!(3, tree.root.version);
 
         // Mutation is optimal for CowPathIter even when copying multiple paths. Therefore,
         // the root version count is only incremented once.
-        assert_eq!(4, cow_tree.root.borrow().version);
+        assert_eq!(4, cow_tree.root.version);
 
         // Iterate the original tree and show the empty blobs
         let iter = PathIter::new(&tree.root, paths.clone(), tree.depth);
         for node in iter {
             let node = node.unwrap();
             let blob = node.content.get_blob().unwrap();
-            assert_eq!(*blob, Blob::new());
+            assert_eq!(blob.len(), 0);
             assert_eq!(node.version, 0);
         }
 
@@ -371,7 +414,7 @@ mod tests {
         for node in iter {
             let node = node.unwrap();
             let blob = node.content.get_blob().unwrap();
-            assert_eq!(&blob.data[..], "hello".as_bytes());
+            assert_eq!(&blob[..], "hello".as_bytes());
             // Each node was only modified once
             assert_eq!(node.version, 1);
         }

@@ -2,15 +2,15 @@ use msgpack::decode::{read_u32, read_u8, read_str_len, read_str_data, read_u64_l
 use msgpack::decode::{read_array_size, read_bin_len, ValueReadError, ReadError};
 use msgpack::encode::{write_u32, write_u8, write_str, write_uint, write_array_len, write_bin};
 
+use std::mem;
 use std::io::{Write, Read, Seek, SeekFrom};
 use std::error::Error;
 use std::sync::Arc;
-use std::cell::RefCell;
 use errors::Result;
 use tree::Tree;
 use iterators::{Iter, IterNode, IterContent};
 use node::{Node, Content, Edge};
-use containers::{Container, Blob, Queue, Set};
+use containers::{Container, Queue, Set};
 
 // Types of Content - Used for msgpack serialization
 const DIRECTORY_TYPE_ID: u8 = 0;
@@ -39,13 +39,13 @@ pub fn load<R>(reader: &mut R) -> Result<Tree> where R: Read + Seek {
     if root.is_none() {
         return Err("empty tree".into());
     }
-    let root = Arc::new(RefCell::new(root.unwrap()));
-    try!(read_inner_nodes(&root, reader, depth));
+    let root = Arc::new(root.unwrap());
+    try!(read_inner_nodes(root.clone(), reader, depth));
     // We are done reading the file
     return Ok(Tree { root: root, depth: depth });
 }
 
-fn read_inner_nodes<R>(root: &Arc<RefCell<Node>>, reader: &mut R, depth: u32) -> Result<()>
+fn read_inner_nodes<R>(root: Arc<Node>, reader: &mut R, depth: u32) -> Result<()>
     where R: Read + Seek
 {
     // A stack of directories for a depth first traversal
@@ -54,22 +54,21 @@ fn read_inner_nodes<R>(root: &Arc<RefCell<Node>>, reader: &mut R, depth: u32) ->
     loop {
         match read_node(reader) {
             Ok(Some(node)) => {
-                let node = Arc::new(RefCell::new(node));
-                let node_depth = node.borrow().path.split("/").skip_while(|&s| s == "").count();
+                let node = Arc::new(node);
+                let node_depth = node.path.split("/").skip_while(|&s| s == "").count();
                 while node_depth != stack.len() {
                     stack.pop();
                 }
                 // This node is a child of the current top of the stack
-                insert_edge(&mut stack, node);
+                // Unsafe because insert_edge mutates an Arc (the parent of this node)
+                // It's safe in our case because there is no concurrency
+                unsafe {
+                    insert_edge(&mut stack, node.clone());
+                }
 
                 // If the last node pushed is a directory, then add it to the stack
-                // I can't figure out a way to get around this unsafe.
-                unsafe {
-                    let parent = stack.last().unwrap().as_ptr();
-                    let node_ref = &(*parent).content.get_dir_edges_mut().unwrap().last().unwrap().node;
-                    if node_ref.borrow().content.is_dir() {
-                        stack.push(node_ref);
-                    }
+                if node.content.is_dir() {
+                    stack.push(node);
                 }
             },
             Ok(None) => return Ok(()),
@@ -116,7 +115,7 @@ fn read_node<R>(reader: &mut R) -> Result<Option<Node>> where R: Read + Seek {
             let content = try!(read_content(reader));
             return Ok(Some(Node {
                 path: path.to_string(),
-                version: version as usize,
+                version: version,
                 content: content
             }))
         },
@@ -175,11 +174,11 @@ fn read_container<R: Read>(reader: &mut R) -> Result<Container> {
     }
 }
 
-fn read_blob<R: Read>(reader: &mut R) -> Result<Blob> {
+fn read_blob<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
     let len = try!(read_bin_len(reader));
     let mut buf = vec![0u8; len as usize];
     try!(reader.read_exact(&mut buf));
-    Ok(Blob::fill(buf))
+    Ok(buf)
 }
 
 /// Serialize a Container and write it to the given file
@@ -208,14 +207,14 @@ fn write_container<W: Write>(writer: &mut W, container: &Container) -> Result<()
     }
 }
 
-fn write_blob<W: Write>(writer: &mut W, blob: &Blob) -> Result<()> {
-    write_bin(writer, &blob.data).map_err(|e| e.into())
+fn write_blob<W: Write>(writer: &mut W, blob: &[u8]) -> Result<()> {
+    write_bin(writer, blob).map_err(|e| e.into())
 }
 
-fn insert_edge(stack: &mut Vec<&Arc<RefCell<Node>>>, node: Arc<RefCell<Node>>) {
-    let mut parent = stack.last_mut().unwrap().borrow_mut();
-    let mut edges = parent.content.get_dir_edges_mut().unwrap();
-    let label = node.borrow().path.split("/").last().unwrap().to_string();
+unsafe fn insert_edge(stack: &mut Vec<Arc<Node>>, node: Arc<Node>) {
+    let parent: *mut Node = mem::transmute(&**stack.last_mut().unwrap());
+    let mut edges = (*parent).content.get_dir_edges_mut().unwrap();
+    let label = node.path.split("/").last().unwrap().to_string();
     let edge = Edge {
         label: label,
         node: node
@@ -227,55 +226,29 @@ fn insert_edge(stack: &mut Vec<&Arc<RefCell<Node>>>, node: Arc<RefCell<Node>>) {
 mod tests {
 
     use std::fs;
-    use quickcheck::{Arbitrary, Gen};
     use tree::Tree;
     use node::NodeType;
-    use rand::distributions::range::Range;
-    use rand::distributions::IndependentSample;
+    use arbitrary::Path;
 
-    #[derive(Debug, Clone)]
-    struct Path(String);
-
-    impl Arbitrary for Path {
-        fn arbitrary<G: Gen>(g: &mut G) -> Path {
-            let range = Range::new(1u8, 11u8);
-            let depth = range.ind_sample(g);
-            let labels = ['a', 'b', 'c', 'd', 'e'];
-            let mut path = String::with_capacity((depth*2 - 1) as usize);
-            path = (0..depth).fold(path, |mut acc, _| {
-                acc.push('/');
-                acc.push(*g.choose(&labels).unwrap());
-                acc
-            });
-            Path(path)
-        }
-    }
-
-    impl Arbitrary for NodeType {
-        fn arbitrary<G: Gen>(g: &mut G) -> NodeType {
-            g.choose(&[NodeType::Directory, NodeType::Queue, NodeType::Set, NodeType::Blob])
-             .unwrap().clone()
-        }
-    }
-
-    #[quickcheck]
     /// Create a random tree, take a snapshot, and ensure reading it back in gives the same tree
-    fn prop_rountrip(node_specs: Vec<(Path, NodeType)>) -> bool {
-        let tree = node_specs.iter().fold(Tree::new(), |acc, &(ref path, ref node_type)| {
-            // Ignore failures. We may try to insert a node into a non-directory due to randomness
-            // of generation. It doesn't matter for this property.
-            match acc.create(&path.0, node_type.clone()) {
-                Ok(tree) => tree,
-                _ => acc
-            }
-        });
-        let filename = tree.snapshot("/tmp").unwrap();
-        let loaded_tree = Tree::load_snapshot(&filename).unwrap();
-        fs::remove_file(filename).unwrap();
+    quickcheck! {
+        fn prop_rountrip(node_specs: Vec<(Path, NodeType)>) -> bool {
+            let tree = node_specs.iter().fold(Tree::new(), |acc, &(ref path, ref node_type)| {
+                // Ignore failures. We may try to insert a node into a non-directory due to randomness
+                // of generation. It doesn't matter for this property.
+                match acc.create(&path.0, node_type.clone()) {
+                    Ok(tree) => tree,
+                    _ => acc
+                }
+            });
+            let filename = tree.snapshot("/tmp").unwrap();
+            let loaded_tree = Tree::load_snapshot(&filename).unwrap();
+            fs::remove_file(filename).unwrap();
 
-        if tree.depth != loaded_tree.depth {
-            return false;
+            if tree.depth != loaded_tree.depth {
+                return false;
+            }
+            tree.iter().zip(loaded_tree.iter()).all(|(node1, node2)| node1 == node2)
         }
-        tree.iter().zip(loaded_tree.iter()).all(|(node1, node2)| node1 == node2)
     }
 }

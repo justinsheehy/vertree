@@ -1,6 +1,5 @@
 use std::sync::Arc;
-use std::cell::RefCell;
-use containers::{Container, Blob, Queue, Set};
+use containers::{Container, Queue, Set};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum NodeType {
@@ -14,7 +13,7 @@ pub enum NodeType {
 #[derive(Clone, Debug)]
 pub struct Node {
     pub path: String,
-    pub version: usize,
+    pub version: u64,
     pub content: Content
 }
 
@@ -50,7 +49,7 @@ impl Content {
     pub fn new(ty: NodeType) -> Content {
         match ty {
             NodeType::Directory => Content::Directory(vec![]),
-            NodeType::Blob => Content::Container(Container::Blob(Blob::new())),
+            NodeType::Blob => Content::Container(Container::Blob(Vec::new())),
             NodeType::Queue => Content::Container(Container::Queue(Queue::new())),
             NodeType::Set => Content::Container(Container::Set(Set::new()))
         }
@@ -64,7 +63,7 @@ impl Content {
     }
 
     /// Return a reference to the blob if the content contains a blob, None otherwise
-    pub fn get_blob(&self) -> Option<&Blob> {
+    pub fn get_blob(&self) -> Option<&[u8]> {
         if let Content::Container(Container::Blob(ref blob)) = *self {
             return Some(blob);
         }
@@ -115,14 +114,14 @@ impl Content {
 #[derive(Clone, Debug)]
 pub struct Edge {
     pub label: String,
-    pub node: Arc<RefCell<Node>>
+    pub node: Arc<Node>
 }
 
 impl Edge {
     pub fn new(label: &str, node: Node) -> Edge {
         Edge {
             label: label.to_string(),
-            node: Arc::new(RefCell::new(node))
+            node: Arc::new(node)
         }
     }
 }

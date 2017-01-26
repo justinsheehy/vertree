@@ -1,4 +1,3 @@
-use std::mem;
 use std::sync::Arc;
 use tree::Tree;
 use node::{Node, Content};
@@ -44,7 +43,7 @@ impl<'a> Iter<'a> {
 impl<'a> Iterator for Iter<'a> {
     type Item = IterNode<'a>;
     fn next(&mut self) -> Option<IterNode<'a>> {
-        if self.stack.len() == 0 {
+        if self.stack.is_empty() {
             return None;
         }
         let node = self.stack.pop().unwrap();
@@ -53,7 +52,7 @@ impl<'a> Iterator for Iter<'a> {
                 self.stack.extend(edges.iter().rev().map(|edge| &edge.node));
                 IterContent::Directory(edges.iter().map(|edge| &edge.label as &str).collect())
             }
-            Content::Container(ref container) => IterContent::Container(&container),
+            Content::Container(ref container) => IterContent::Container(container),
         };
         Some(IterNode {
             path: &node.path,
@@ -79,7 +78,7 @@ impl<'a> CowPathIter<'a> {
         paths.reverse();
         let mut stack = Vec::with_capacity(max_depth as usize);
         let root = cow_node(root);
-        let ptr: *mut Node = unsafe { mem::transmute(&*root) };
+        let ptr: *mut Node = &*root as *const Node as *mut Node;
         stack.push(ptr);
         CowPathIter {
             tree: Tree {
@@ -107,13 +106,13 @@ impl<'a> CowPathIter<'a> {
                 };
                 if path.starts_with(&(*node).path) {
                     let num_labels = (*node).path.split('/').skip_while(|&s| s == "").count();
-                    let mut split = path.split('/').skip_while(|&s| s == "").skip(num_labels);
-                    while let Some(label) = split.next() {
+                    let split = path.split('/').skip_while(|&s| s == "").skip(num_labels);
+                    for label in split {
                         if label == "" {
                             // Skip Trailing slashes
                             continue;
                         }
-                        node = cow_get_child(node, &label)?;
+                        node = cow_get_child(node, label)?;
                         let ptr: *mut Node = &mut (*node);
                         self.stack.push(ptr);
                     }
@@ -137,7 +136,7 @@ impl<'a> CowPathIter<'a> {
 impl<'a> Iterator for CowPathIter<'a> {
     type Item = Result<&'a mut Node>;
     fn next(&mut self) -> Option<Result<&'a mut Node>> {
-        if self.paths.len() == 0 {
+        if self.paths.is_empty() {
             return None;
         }
         Some(self.walk())
@@ -178,15 +177,15 @@ impl<'a> PathIter<'a> {
             };
             if path.starts_with(&node.path) {
                 let num_labels = node.path.split('/').skip_while(|&s| s == "").count();
-                let mut split = path.split('/').skip_while(|&s| s == "").skip(num_labels);
+                let split = path.split('/').skip_while(|&s| s == "").skip(num_labels);
                 let mut depth_from_current_node = 0;
-                while let Some(label) = split.next() {
+                for label in split {
                     depth_from_current_node += 1;
                     if label == "" {
                         // Skip Trailing slashes
                         continue;
                     }
-                    node = get_child(&node, &label)?;
+                    node = get_child(node, label)?;
                     // Push the child on the stack
                     self.stack.push(node);
                 }
@@ -204,7 +203,7 @@ impl<'a> PathIter<'a> {
 impl<'a> Iterator for PathIter<'a> {
     type Item = Result<&'a Node>;
     fn next(&mut self) -> Option<Result<&'a Node>> {
-        if self.paths.len() == 0 {
+        if self.paths.is_empty() {
             return None;
         }
         Some(self.walk())
@@ -214,13 +213,13 @@ impl<'a> Iterator for PathIter<'a> {
 /// Take a mutable parent directory node, and COW the child node given by it's label
 ///
 /// Insert the COW'd child in the correct position and return a reference to it
-unsafe fn cow_get_child<'a>(node: *mut Node, label: &'a str) -> Result<*mut Node> {
+unsafe fn cow_get_child(node: *mut Node, label: &str) -> Result<*mut Node> {
     if let Content::Directory(ref mut edges) = (*node).content {
         match edges.binary_search_by_key(&label, |e| &e.label) {
             Ok(index) => {
                 let mut edge = edges.get_unchecked_mut(index);
                 edge.node = cow_node(&edge.node);
-                let ptr: *mut Node = mem::transmute(&*edge.node);
+                let ptr: *mut Node = &*edge.node as *const Node as *mut Node;
                 return Ok(ptr);
             }
             Err(_) => {

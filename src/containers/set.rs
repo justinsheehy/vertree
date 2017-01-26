@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq,Default)]
 pub struct Set {
     pub data: HashSet<Vec<u8>>,
 }
@@ -32,18 +32,23 @@ impl Set {
 
     /// Remove the element from the set
     /// Returns `true` if the value was present in the set, `false` otherwise
-    pub fn remove(&mut self, element: &Vec<u8>) -> bool {
+    pub fn remove(&mut self, element: &[u8]) -> bool {
         self.data.remove(element)
     }
 
     /// Returns `true` if the element is in the set
-    pub fn contains(&self, element: &Vec<u8>) -> bool {
+    pub fn contains(&self, element: &[u8]) -> bool {
         self.data.contains(element)
     }
 
     /// Returns the number of elements in the Set
     pub fn len(&self) -> usize {
         self.data.len()
+    }
+
+    /// Returns `true` if the `Set` is empty
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 
 

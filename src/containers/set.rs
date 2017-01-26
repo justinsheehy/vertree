@@ -47,6 +47,12 @@ impl Set {
         self.data.contains(element)
     }
 
+     /// Returns the number of elements in the Set
+     pub fn len(&self) -> usize {
+       self.data.len()
+     }
+
+
     /// Returns the union of two sets
     ///
     /// # Examples

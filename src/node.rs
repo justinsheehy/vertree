@@ -6,7 +6,7 @@ pub enum NodeType {
     Directory,
     Blob,
     Queue,
-    Set
+    Set,
 }
 
 /// A node in a hierarchical version tree
@@ -14,7 +14,7 @@ pub enum NodeType {
 pub struct Node {
     pub path: String,
     pub version: u64,
-    pub content: Content
+    pub content: Content,
 }
 
 impl Node {
@@ -24,7 +24,7 @@ impl Node {
         Node {
             path: path.into(),
             version: 0,
-            content: content
+            content: content,
         }
     }
 
@@ -42,7 +42,7 @@ impl Node {
 #[derive(Clone, Debug)]
 pub enum Content {
     Directory(Vec<Edge>),
-    Container(Container)
+    Container(Container),
 }
 
 impl Content {
@@ -51,7 +51,7 @@ impl Content {
             NodeType::Directory => Content::Directory(vec![]),
             NodeType::Blob => Content::Container(Container::Blob(Vec::new())),
             NodeType::Queue => Content::Container(Container::Queue(Queue::new())),
-            NodeType::Set => Content::Container(Container::Set(Set::new()))
+            NodeType::Set => Content::Container(Container::Set(Set::new())),
         }
     }
 
@@ -114,14 +114,14 @@ impl Content {
 #[derive(Clone, Debug)]
 pub struct Edge {
     pub label: String,
-    pub node: Arc<Node>
+    pub node: Arc<Node>,
 }
 
 impl Edge {
     pub fn new(label: &str, node: Node) -> Edge {
         Edge {
             label: label.to_string(),
-            node: Arc::new(node)
+            node: Arc::new(node),
         }
     }
 }

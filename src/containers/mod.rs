@@ -9,6 +9,5 @@ pub use self::set::Set;
 pub enum Container {
     Blob(Vec<u8>),
     Queue(Queue),
-    Set(Set)
+    Set(Set),
 }
-

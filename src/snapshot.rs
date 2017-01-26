@@ -33,7 +33,9 @@ pub fn write<W: Write>(writer: &mut W, depth: u32, iter: Iter) -> Result<()> {
 }
 
 /// Load a tree from a Reader `R`
-pub fn load<R>(reader: &mut R) -> Result<Tree> where R: Read + Seek {
+pub fn load<R>(reader: &mut R) -> Result<Tree>
+    where R: Read + Seek
+{
     let depth = try!(read_u32(reader));
     let root = try!(read_node(reader));
     if root.is_none() {
@@ -42,7 +44,10 @@ pub fn load<R>(reader: &mut R) -> Result<Tree> where R: Read + Seek {
     let root = Arc::new(root.unwrap());
     try!(read_inner_nodes(root.clone(), reader, depth));
     // We are done reading the file
-    return Ok(Tree { root: root, depth: depth });
+    return Ok(Tree {
+        root: root,
+        depth: depth,
+    });
 }
 
 fn read_inner_nodes<R>(root: Arc<Node>, reader: &mut R, depth: u32) -> Result<()>
@@ -70,9 +75,9 @@ fn read_inner_nodes<R>(root: Arc<Node>, reader: &mut R, depth: u32) -> Result<()
                 if node.content.is_dir() {
                     stack.push(node);
                 }
-            },
+            }
             Ok(None) => return Ok(()),
-            Err(e) => return Err(e)
+            Err(e) => return Err(e),
         }
     }
 }
@@ -90,7 +95,7 @@ fn write_node<W: Write>(writer: &mut W, node: &IterNode) -> Result<()> {
             for label in labels {
                 try!(write_str(writer, label));
             }
-        },
+        }
         IterContent::Container(ref container) => {
             try!(write_u8(writer, CONTAINER_TYPE_ID));
             try!(write_container(writer, &container));
@@ -104,27 +109,30 @@ fn write_node<W: Write>(writer: &mut W, node: &IterNode) -> Result<()> {
 /// Since directories contain child pointers in Nodes, but not in IterNodes, this function allocates
 /// a properly sized vector for directory entries (edges) but leaves it empty. It will be filled in
 /// when reconstructing the tree.
-fn read_node<R>(reader: &mut R) -> Result<Option<Node>> where R: Read + Seek {
+fn read_node<R>(reader: &mut R) -> Result<Option<Node>>
+    where R: Read + Seek
+{
     match read_str_len(reader) {
         Ok(path_len) => {
             let mut path_buf = vec![0u8; path_len as usize];
-            let path = try!(read_str_data(reader, path_len, &mut path_buf).map_err(|e| {
-                e.cause().unwrap().to_string()
-            }));
+            let path = try!(read_str_data(reader, path_len, &mut path_buf)
+                .map_err(|e| e.cause().unwrap().to_string()));
             let version = try!(read_u64_loosely(reader));
             let content = try!(read_content(reader));
             return Ok(Some(Node {
                 path: path.to_string(),
                 version: version,
-                content: content
-            }))
-        },
+                content: content,
+            }));
+        }
         Err(ValueReadError::InvalidMarkerRead(ReadError::UnexpectedEOF)) => return Ok(None),
-        Err(e) => return Err(e.into())
+        Err(e) => return Err(e.into()),
     }
 }
 
-fn read_content<R>(reader: &mut R) -> Result<Content> where R: Read + Seek {
+fn read_content<R>(reader: &mut R) -> Result<Content>
+    where R: Read + Seek
+{
     let content_type = try!(read_u8(reader));
     match content_type {
         DIRECTORY_TYPE_ID => {
@@ -136,12 +144,12 @@ fn read_content<R>(reader: &mut R) -> Result<Content> where R: Read + Seek {
                 try!(reader.seek(SeekFrom::Current(str_len as i64)));
             }
             Ok(Content::Directory(Vec::with_capacity(len as usize)))
-        },
+        }
         CONTAINER_TYPE_ID => {
             let container = try!(read_container(reader));
             Ok(Content::Container(container))
-        },
-        _ => unreachable!()
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -151,7 +159,7 @@ fn read_container<R: Read>(reader: &mut R) -> Result<Container> {
         BLOB_TYPE_ID => {
             let blob = try!(read_blob(reader));
             Ok(Container::Blob(blob))
-        },
+        }
         QUEUE_TYPE_ID => {
             let len = try!(read_array_size(reader));
             let mut queue = Queue::with_capacity(len as usize);
@@ -160,7 +168,7 @@ fn read_container<R: Read>(reader: &mut R) -> Result<Container> {
                 queue.push(blob)
             }
             Ok(Container::Queue(queue))
-        },
+        }
         SET_TYPE_ID => {
             let len = try!(read_array_size(reader));
             let mut set = Set::with_capacity(len as usize);
@@ -169,8 +177,8 @@ fn read_container<R: Read>(reader: &mut R) -> Result<Container> {
                 let _ = set.insert(blob);
             }
             Ok(Container::Set(set))
-        },
-        _ => unreachable!()
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -187,7 +195,7 @@ fn write_container<W: Write>(writer: &mut W, container: &Container) -> Result<()
         Container::Blob(ref blob) => {
             try!(write_u8(writer, BLOB_TYPE_ID));
             write_blob(writer, blob)
-        },
+        }
         Container::Queue(ref queue) => {
             try!(write_u8(writer, QUEUE_TYPE_ID));
             try!(write_array_len(writer, queue.len() as u32));
@@ -195,7 +203,7 @@ fn write_container<W: Write>(writer: &mut W, container: &Container) -> Result<()
                 try!(write_blob(writer, blob));
             }
             Ok(())
-        },
+        }
         Container::Set(ref set) => {
             try!(write_u8(writer, SET_TYPE_ID));
             try!(write_array_len(writer, set.data.len() as u32));
@@ -217,7 +225,7 @@ unsafe fn insert_edge(stack: &mut Vec<Arc<Node>>, node: Arc<Node>) {
     let label = node.path.split("/").last().unwrap().to_string();
     let edge = Edge {
         label: label,
-        node: node
+        node: node,
     };
     edges.push(edge);
 }

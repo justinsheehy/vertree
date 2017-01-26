@@ -113,7 +113,7 @@ impl<'a> CowPathIter<'a> {
                             // Skip Trailing slashes
                             continue;
                         }
-                        node = try!(cow_get_child(node, &label));
+                        node = cow_get_child(node, &label)?;
                         let ptr: *mut Node = &mut (*node);
                         self.stack.push(ptr);
                     }
@@ -186,7 +186,7 @@ impl<'a> PathIter<'a> {
                         // Skip Trailing slashes
                         continue;
                     }
-                    node = try!(get_child(&node, &label));
+                    node = get_child(&node, &label)?;
                     // Push the child on the stack
                     self.stack.push(node);
                 }

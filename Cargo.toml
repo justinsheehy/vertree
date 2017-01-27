@@ -9,7 +9,7 @@ keywords = ["tree", "trie", "immutable", "persistent"]
 license = "Apache-2.0"
 
 [dependencies]
-error-chain = "0.5"
+error-chain = "0.8"
 rmp = "^0.7"
 
 [dev-dependencies]

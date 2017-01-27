@@ -1,21 +1,17 @@
 use std::collections::VecDeque;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq,Default)]
 pub struct Queue {
-    pub data: VecDeque<Vec<u8>>
+    pub data: VecDeque<Vec<u8>>,
 }
 
 impl Queue {
     pub fn new() -> Queue {
-        Queue {
-            data: VecDeque::new()
-        }
+        Queue { data: VecDeque::new() }
     }
 
     pub fn with_capacity(size: usize) -> Queue {
-        Queue {
-            data: VecDeque::with_capacity(size)
-        }
+        Queue { data: VecDeque::with_capacity(size) }
     }
 
     /// Append an element onto the back of the queue
@@ -44,6 +40,10 @@ impl Queue {
     pub fn len(&self) -> usize {
         self.data.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -59,8 +59,7 @@ mod tests {
         let res1 = q1.pop();
         match res1 {
             Some(r1) => assert_eq!(r1, blob1),
-            None => panic!("got None, expected Some for res1")
+            None => panic!("got None, expected Some for res1"),
         }
     }
 }
-

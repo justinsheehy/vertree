@@ -6,20 +6,20 @@ use node::NodeType;
 #[derive(Debug, Clone)]
 pub struct Guard {
     pub path: String,
-    pub version: u64
+    pub version: u64,
 }
 
 /// A write operation that is part of a multi-cas
 #[derive(Debug, Clone)]
 pub enum WriteOp {
-    CreateNode {path: String, ty: NodeType},
-    DeleteNode {path: String},
-    BlobPut {path: String, val: Vec<u8>},
-    QueuePush {path: String, val: Vec<u8>},
-    QueuePop {path: String},
-    SetInsert {path: String, val: Vec<u8>},
-    SetRemove {path: String, val: Vec<u8>},
-    Snapshot {directory: String}
+    CreateNode { path: String, ty: NodeType },
+    DeleteNode { path: String },
+    BlobPut { path: String, val: Vec<u8> },
+    QueuePush { path: String, val: Vec<u8> },
+    QueuePop { path: String },
+    SetInsert { path: String, val: Vec<u8> },
+    SetRemove { path: String, val: Vec<u8> },
+    Snapshot { directory: String },
 }
 
 #[cfg(test)]
@@ -39,14 +39,39 @@ mod tests {
             let mut val: Vec<u8> = vec![0; 5];
             g.fill_bytes(&mut val);
             match range.ind_sample(g) {
-                1 => WriteOp::CreateNode {path: path, ty: NodeType::arbitrary(g)},
-                2 => WriteOp::DeleteNode {path: path},
-                3 => WriteOp::BlobPut {path: path, val: val},
-                4 => WriteOp::QueuePush {path: path, val: val},
-                5 => WriteOp::QueuePop {path: path},
-                6 => WriteOp::SetInsert {path: path, val: val},
-                7 => WriteOp::SetRemove {path: path, val: val},
-                _ => unreachable!()
+                1 => {
+                    WriteOp::CreateNode {
+                        path: path,
+                        ty: NodeType::arbitrary(g),
+                    }
+                }
+                2 => WriteOp::DeleteNode { path: path },
+                3 => {
+                    WriteOp::BlobPut {
+                        path: path,
+                        val: val,
+                    }
+                }
+                4 => {
+                    WriteOp::QueuePush {
+                        path: path,
+                        val: val,
+                    }
+                }
+                5 => WriteOp::QueuePop { path: path },
+                6 => {
+                    WriteOp::SetInsert {
+                        path: path,
+                        val: val,
+                    }
+                }
+                7 => {
+                    WriteOp::SetRemove {
+                        path: path,
+                        val: val,
+                    }
+                }
+                _ => unreachable!(),
             }
         }
     }
@@ -66,14 +91,15 @@ mod tests {
 
     /// Any op that doesn't succeed on it's own is removed from the list
     fn filter_by_valid<'a>(ops: Vec<WriteOp>) -> (Vec<WriteOp>, Vec<Reply>, Tree) {
-        ops.into_iter().fold((Vec::new(), Vec::new(), Tree::new()), |(mut ops, mut replies, tree), op| {
+        ops.into_iter().fold((Vec::new(), Vec::new(), Tree::new()),
+                             |(mut ops, mut replies, tree), op| {
             match tree.multi_cas(vec![], vec![op.clone()]) {
                 Ok((new_replies, new_tree)) => {
                     ops.push(op);
                     replies.extend(new_replies);
                     (ops, replies, new_tree)
-                },
-                Err(_) => (ops, replies, tree)
+                }
+                Err(_) => (ops, replies, tree),
             }
         })
     }

@@ -1,12 +1,11 @@
 use node::NodeType;
-use std::io;
 use msgpack;
 
 error_chain! {
     foreign_links {
-        io::Error, Io;
-        msgpack::encode::ValueWriteError, MsgPackValueWriteError;
-        msgpack::decode::ValueReadError, MsgPackValueReadError;
+        Io(::std::io::Error) #[cfg(unix)];
+        MsgPackValueWriteError(msgpack::encode::ValueWriteError);
+        MsgPackValueReadError(msgpack::decode::ValueReadError);
     }
 
     errors {

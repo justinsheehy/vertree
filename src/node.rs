@@ -51,7 +51,7 @@ impl Content {
             NodeType::Directory => Content::Directory(vec![]),
             NodeType::Blob => Content::Container(Container::Blob(Vec::new())),
             NodeType::Queue => Content::Container(Container::Queue(Queue::new())),
-            NodeType::Set => Content::Container(Container::Set(Set::new()))
+            NodeType::Set => Content::Container(Container::Set(Set::new())),
         }
     }
 

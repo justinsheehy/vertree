@@ -31,14 +31,12 @@ pub struct IterNode<'a> {
 
 /// An iterator that performs a depth first walk of the entire tree.
 pub struct Iter<'a> {
-    stack: Vec<&'a Arc<Node>>,
+    stack: Vec<&'a Arc<Node>>
 }
 
 impl<'a> Iter<'a> {
     pub fn new(root: &'a Arc<Node>) -> Iter<'a> {
-        Iter {
-            stack: vec![root]
-        }
+        Iter { stack: vec![root] }
     }
 }
 
@@ -53,10 +51,8 @@ impl<'a> Iterator for Iter<'a> {
             Content::Directory(ref edges) => {
                 self.stack.extend(edges.iter().rev().map(|edge| &edge.node));
                 IterContent::Directory(edges.iter().map(|edge| &edge.label as &str).collect())
-            },
-			Content::Container(ref container) => {
-				IterContent::Container(container)
-			}
+            }
+            Content::Container(ref container) => IterContent::Container(&container),
         };
         Some(IterNode {
             path: &node.path,
@@ -76,19 +72,19 @@ pub struct CowPathIter<'a> {
 }
 
 impl<'a> CowPathIter<'a> {
-    pub fn new(root: &'a Arc<Node>,
-               mut paths: Vec<&'a str>,
-               max_depth: u32) -> CowPathIter<'a>
-    {
+    pub fn new(root: &'a Arc<Node>, mut paths: Vec<&'a str>, max_depth: u32) -> CowPathIter<'a> {
         paths.sort();
         paths.dedup();
         paths.reverse();
         let mut stack = Vec::with_capacity(max_depth as usize);
         let root = cow_node(root);
-		let ptr: *mut Node = &*root as *const Node as *mut Node;        
-		stack.push(ptr);
+        let ptr: *mut Node = &*root as *const Node as *mut Node;
+        stack.push(ptr);
         CowPathIter {
-            tree: Tree {root: root, depth: max_depth},
+            tree: Tree {
+                root: root,
+                depth: max_depth
+            },
             paths: paths,
             stack: stack
         }
@@ -106,7 +102,7 @@ impl<'a> CowPathIter<'a> {
             unsafe {
                 let mut node = match self.stack.last() {
                     Some(node) => *node,
-                    None => return Err(ErrorKind::DoesNotExist(path.to_string()).into())
+                    None => return Err(ErrorKind::DoesNotExist(path.to_string()).into()),
                 };
                 if path.starts_with(&(*node).path) {
                     let num_labels = (*node).path.split('/').skip_while(|&s| s == "").count();
@@ -158,10 +154,7 @@ impl<'a> PathIter<'a> {
     /// Create a new iterator for a set of given paths
     ///
     /// Allocate a stack to the max depth of the tree, so we don't need to resize it.
-    pub fn new(root: &'a Arc<Node>,
-               mut paths: Vec<&'a str>,
-               max_depth: u32) -> PathIter<'a>
-    {
+    pub fn new(root: &'a Arc<Node>, mut paths: Vec<&'a str>, max_depth: u32) -> PathIter<'a> {
         paths.sort();
         paths.dedup();
         paths.reverse();
@@ -180,7 +173,7 @@ impl<'a> PathIter<'a> {
         loop {
             let mut node = match self.stack.last() {
                 Some(node) => *node,
-                None => return Err(ErrorKind::DoesNotExist(path.to_string()).into())
+                None => return Err(ErrorKind::DoesNotExist(path.to_string()).into()),
             };
             if path.starts_with(&node.path) {
                 let num_labels = node.path.split('/').skip_while(|&s| s == "").count();
@@ -228,7 +221,7 @@ unsafe fn cow_get_child(node: *mut Node, label: &str) -> Result<*mut Node> {
                 edge.node = cow_node(&edge.node);
                 let ptr: *mut Node = &*edge.node as *const Node as *mut Node;
                 return Ok(ptr);
-            },
+            }
             Err(_) => {
                 let mut path = (*node).path.clone();
                 if &path != "/" {
@@ -246,10 +239,8 @@ unsafe fn cow_get_child(node: *mut Node, label: &str) -> Result<*mut Node> {
 fn get_child<'a>(node: &'a Node, label: &'a str) -> Result<&'a Node> {
     if let Content::Directory(ref edges) = node.content {
         match edges.binary_search_by_key(&label, |e| &e.label) {
-            Ok(index) => {
-                unsafe {
-                    return Ok(&*edges.get_unchecked(index).node);
-                }
+            Ok(index) => unsafe {
+                return Ok(&*edges.get_unchecked(index).node);
             },
             Err(_) => {
                 let mut path = node.path.clone();

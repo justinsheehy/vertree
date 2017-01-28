@@ -11,4 +11,3 @@ pub enum Container {
     Queue(Queue),
     Set(Set)
 }
-

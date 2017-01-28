@@ -63,7 +63,7 @@ impl Tree {
     /// it doesn't rely on recursion, since Rust does not have tail recursion and we don't want to
     /// limit the depth of the tree arbitrarily.
     pub fn create(&self, path: &str, ty: NodeType) -> Result<Tree> {
-        let path = try!(validate_path(path));
+        let path = validate_path(path)?;
         // Get a new root
         let root = cow_node(&self.root);
         let mut node = root.clone();
@@ -75,7 +75,7 @@ impl Tree {
                 unsafe {
                     // Unsafe because it mutates an Arc (the parent node)
                     // It's fine in this case, since there is no concurrency
-                    try!(insert_leaf(node.clone(), &s, ty));
+                    insert_leaf(node.clone(), &s, ty)?;
                 }
                 depth += 1;
                 break;
@@ -84,7 +84,7 @@ impl Tree {
             unsafe {
                 // Unsafe because it mutates an Arc (the parent node)
                 // It's fine in this case, since there is no concurrency
-                node = try!(insert_dir(node.clone(), &s));
+                node = insert_dir(node.clone(), &s)?;
             }
 
             depth += 1;
@@ -106,11 +106,11 @@ impl Tree {
             None => return Err(ErrorKind::PathMustBeAbsolute(path.to_string()).into())
         };
 
-        let (node, tree) = try!(self.find_mut(parent, NodeType::Directory));
+        let (node, tree) = self.find_mut(parent, NodeType::Directory)?;
         if let Content::Directory(ref mut edges) = node.content {
-            let index = try!(edges.binary_search_by_key(&label, |e| &e.label).map_err(|_| {
+            let index = edges.binary_search_by_key(&label, |e| &e.label).map_err(|_| {
                 Error::from(ErrorKind::DoesNotExist(path.to_string()))
-            }));
+            })?;
             let deleted = edges.remove(index);
             return Ok((deleted.node.version, tree));
         }
@@ -137,14 +137,14 @@ impl Tree {
     pub fn snapshot(&self, dir: &str) -> Result<String> {
         let dir = dir.trim_right_matches("/");
         let filename = format!("{}/vertree_{}.tree", dir, self.root.version);
-        let mut f = try!(File::create(&filename));
-        try!(snapshot::write(&mut f, self.depth, self.iter()));
+        let mut f = File::create(&filename)?;
+        snapshot::write(&mut f, self.depth, self.iter())?;
         Ok(filename)
     }
 
     /// Load a snapshot from the file at `file`
     pub fn load_snapshot(path: &str) -> Result<Tree> {
-        let mut f = try!(File::open(path));
+        let mut f = File::open(path)?;
         snapshot::load(&mut f)
     }
 
@@ -159,13 +159,13 @@ impl Tree {
     /// Some write operations, such as 'QueuePop' return values other than Ok. Due to this, we
     /// return an array of results on success.
     pub fn multi_cas(&self, guards: Vec<Guard>, ops: Vec<WriteOp>) -> Result<(Vec<Reply>, Tree)> {
-        try!(self.check_guards(guards));
+        self.check_guards(guards)?;
         let mut replies = Vec::with_capacity(ops.len());
         let mut tree = self.clone();
         for op in ops {
             tree = match op {
                 WriteOp::CreateNode {path, ty} => {
-                    let new_tree = try!(tree.create(&path, ty));
+                    let new_tree = tree.create(&path, ty)?;
                     let version = { new_tree.root.version };
                     replies.push(Reply {
                         path: Some("/".to_string()),
@@ -175,7 +175,7 @@ impl Tree {
                     new_tree
                 },
                 WriteOp::DeleteNode{path} => {
-                    let (version, new_tree) = try!(tree.delete(&path));
+                    let (version, new_tree) = tree.delete(&path)?;
                     replies.push(Reply {
                         path: Some(path),
                         version: Some(version),
@@ -184,32 +184,32 @@ impl Tree {
                     new_tree
                 },
                 WriteOp::BlobPut {path, val} => {
-                    let (reply, new_tree) = try!(tree.blob_put(path, val));
+                    let (reply, new_tree) = tree.blob_put(path, val)?;
                     replies.push(reply);
                     new_tree
                 },
                 WriteOp::QueuePush {path, val} => {
-                    let (reply, new_tree) = try!(tree.queue_push(path, val));
+                    let (reply, new_tree) = tree.queue_push(path, val)?;
                     replies.push(reply);
                     new_tree
                 },
                 WriteOp::QueuePop {path} => {
-                    let (reply, new_tree) = try!(tree.queue_pop(path));
+                    let (reply, new_tree) = tree.queue_pop(path)?;
                     replies.push(reply);
                     new_tree
                 },
                 WriteOp::SetInsert {path, val} => {
-                    let (reply, new_tree) = try!(tree.set_insert(path, val));
+                    let (reply, new_tree) = tree.set_insert(path, val)?;
                     replies.push(reply);
                     new_tree
                 },
                 WriteOp::SetRemove {path, val} => {
-                    let (reply, new_tree) = try!(tree.set_remove(path, val));
+                    let (reply, new_tree) = tree.set_remove(path, val)?;
                     replies.push(reply);
                     new_tree
                 },
                 WriteOp::Snapshot {directory} => {
-                    let _ = try!(tree.snapshot(&directory));
+                    let _ = tree.snapshot(&directory)?;
                     let version = { tree.root.version };
                     replies.push(Reply {
                         path: Some("/".to_string()),
@@ -228,7 +228,7 @@ impl Tree {
         guards.dedup_by_key(|g| g.path.clone());
         let (paths, versions): (Vec<_>, Vec<_>) = guards.iter().map(|g| (&g.path as &str, g.version)).unzip();
         for (node, version) in self.path_iter(paths).zip(versions) {
-            let node = try!(node);
+            let node = node?;
             if node.version != version {
                 return Err(ErrorKind::CasFailed {path: node.path.clone(),
                                                  expected: version,
@@ -239,8 +239,8 @@ impl Tree {
     }
 
     pub fn blob_put(&self, path: String, val: Vec<u8>) -> Result<(Reply, Tree)> {
-        let path = try!(validate_path(&path));
-        let (node, tree) = try!(self.find_mut(&path, NodeType::Blob));
+        let path = validate_path(&path)?;
+        let (node, tree) = self.find_mut(&path, NodeType::Blob)?;
         node.content = Content::Container(Container::Blob(val));
         let reply = Reply {
             // Return the normalized string (trailing slashes removed) as done here?
@@ -253,8 +253,8 @@ impl Tree {
 
     pub fn queue_push(&self, path: String, val: Vec<u8>) -> Result<(Reply, Tree)> {
         let (mut queue, version, tree) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.get_queue_mut(&normalized))
+            let normalized = validate_path(&path)?;
+            self.get_queue_mut(&normalized)?
         };
         queue.push(val);
         let reply = Reply {
@@ -267,8 +267,8 @@ impl Tree {
 
     pub fn queue_pop(&self, path: String) -> Result<(Reply, Tree)> {
         let (mut queue, version, tree) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.get_queue_mut(&normalized))
+            let normalized = validate_path(&path)?;
+            self.get_queue_mut(&normalized)?
         };
         let reply = Reply {
             path: Some(path),
@@ -280,8 +280,8 @@ impl Tree {
 
     pub fn set_insert(&self, path: String, val: Vec<u8>) -> Result<(Reply, Tree)> {
         let (mut set, version, tree) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.get_set_mut(&normalized))
+            let normalized = validate_path(&path)?;
+            self.get_set_mut(&normalized)?
         };
         let reply = Reply {
             path: Some(path),
@@ -293,8 +293,8 @@ impl Tree {
 
     pub fn set_remove(&self, path: String, val: Vec<u8>) -> Result<(Reply, Tree)> {
         let (mut set, version, tree) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.get_set_mut(&normalized))
+            let normalized = validate_path(&path)?;
+            self.get_set_mut(&normalized)?
         };
         let reply = Reply {
             path: Some(path),
@@ -305,21 +305,21 @@ impl Tree {
     }
 
     fn get_queue_mut(&self, path: &str) -> Result<(&mut Queue, u64, Tree)> {
-        let (node, tree) = try!(self.find_mut(&path, NodeType::Queue));
+        let (node, tree) = self.find_mut(&path, NodeType::Queue)?;
         let mut queue = node.content.get_queue_mut().unwrap();
         Ok((queue, node.version, tree))
     }
 
     fn get_set_mut(&self, path: &str) -> Result<(&mut Set, u64, Tree)> {
-        let (node, tree) = try!(self.find_mut(&path, NodeType::Set));
+        let (node, tree) = self.find_mut(&path, NodeType::Set)?;
         let mut queue = node.content.get_set_mut().unwrap();
         Ok((queue, node.version, tree))
     }
 
     pub fn blob_get(&self, path: String) -> Result<Reply> {
         let (blob, version) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.find_blob(&normalized))
+            let normalized = validate_path(&path)?;
+            self.find_blob(&normalized)?
         };
         Ok(Reply {
             path: Some(path),
@@ -330,8 +330,8 @@ impl Tree {
 
     pub fn blob_size(&self, path: String) -> Result<Reply> {
         let (blob, version) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.find_blob(&normalized))
+            let normalized = validate_path(&path)?;
+            self.find_blob(&normalized)?
         };
         Ok(Reply  {
             path: Some(path),
@@ -342,8 +342,8 @@ impl Tree {
 
     pub fn queue_front(&self, path: String) -> Result<Reply> {
         let (queue, version) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.find_queue(&normalized))
+            let normalized = validate_path(&path)?;
+            self.find_queue(&normalized)?
         };
         Ok(Reply {
             path: Some(path),
@@ -354,8 +354,8 @@ impl Tree {
 
     pub fn queue_back(&self, path: String) -> Result<Reply> {
         let (queue, version) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.find_queue(&normalized))
+            let normalized = validate_path(&path)?;
+            self.find_queue(&normalized)?
         };
         Ok(Reply {
             path: Some(path),
@@ -366,8 +366,8 @@ impl Tree {
 
     pub fn queue_len(&self, path: String) -> Result<Reply> {
         let (queue, version) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.find_queue(&normalized))
+            let normalized = validate_path(&path)?;
+            self.find_queue(&normalized)?
         };
         Ok(Reply {
             path: Some(path),
@@ -378,8 +378,8 @@ impl Tree {
 
     pub fn set_contains(&self, path: String, val: Vec<u8>) -> Result<Reply> {
         let (set, version) = {
-            let normalized = try!(validate_path(&path));
-            try!(self.find_set(&normalized))
+            let normalized = validate_path(&path)?;
+            self.find_set(&normalized)?
         };
         Ok(Reply {
             path: Some(path),
@@ -392,7 +392,7 @@ impl Tree {
                       path1: String,
                       path2: Option<String>,
                       set: Option<HashSet<Vec<u8>>>) -> Result<Reply> {
-        let normalized = try!(validate_path(&path1));
+        let normalized = validate_path(&path1)?;
         self.subset_or_superset("Subset", normalized, path2, set, |set1, set2| {
             set1.is_subset(set2)
         })
@@ -402,7 +402,7 @@ impl Tree {
                         path1: String,
                         path2: Option<String>,
                         set: Option<HashSet<Vec<u8>>>) -> Result<Reply> {
-        let normalized = try!(validate_path(&path1));
+        let normalized = validate_path(&path1)?;
         self.subset_or_superset("Superset", normalized, path2, set, |set1, set2| {
             set1.is_superset(set2)
         })
@@ -456,13 +456,13 @@ impl Tree {
             return Err(format!("{} can only operate on 2 sets.
                                 One of `path2` or `set` must be `None`", op).into())
         }
-        let (set1, _) = try!(self.find_set(&path1));
+        let (set1, _) = self.find_set(&path1)?;
 
         let val = if path2.is_some() {
             let (set2, _) = {
                 let path2 = path2.unwrap();
-                let normalized = try!(validate_path(&path2));
-                try!(self.find_set(&normalized))
+                let normalized = validate_path(&path2);
+                self.find_set(&normalized?)?
             };
             f(set1, set2)
         } else {
@@ -484,7 +484,7 @@ impl Tree {
         let mut iter = self.path_iter(paths.clone());
         let (node1, node2) = if let Some(node1) = iter.next() {
             if let Some(node2) = iter.next() {
-                (try!(node1), try!(node2))
+                (node1?, node2?)
             } else {
                 return Err(ErrorKind::DoesNotExist(path2.to_string()).into());
             }
@@ -517,7 +517,7 @@ impl Tree {
         let iter = self.path_iter(paths.clone());
         let mut result = Set::new();
         for node in iter {
-            let node = try!(node);
+            let node = node?;
             if let Some(set) = node.content.get_set() {
                 result = f(result, set);
             } else {
@@ -538,17 +538,17 @@ impl Tree {
     }
 
     fn find_blob(&self, path: &str) -> Result<(&[u8], u64)> {
-        let (content, version) = try!(self.find(path, NodeType::Blob));
+        let (content, version) = self.find(path, NodeType::Blob)?;
         Ok((content.get_blob().unwrap(), version))
     }
 
     fn find_queue(&self, path: &str) -> Result<(&Queue, u64)> {
-        let (content, version) = try!(self.find(path, NodeType::Queue));
+        let (content, version) = self.find(path, NodeType::Queue)?;
         Ok((content.get_queue().unwrap(), version))
     }
 
     fn find_set(&self, path: &str) -> Result<(&Set, u64)> {
-        let (content, version) = try!(self.find(path, NodeType::Set));
+        let (content, version) = self.find(path, NodeType::Set)?;
         Ok((content.get_set().unwrap(), version))
     }
 
@@ -566,7 +566,7 @@ impl Tree {
                     if let Ok(index) = edges.binary_search_by_key(&s, |e| &e.label) {
                         if iter.peek().is_none() {
                             let node = &(*edges.get_unchecked(index).node);
-                            try!(verify_type(node, ty));
+                            verify_type(node, ty)?;
                             return Ok((&node.content, node.version))
                         }
                         parent = &edges.get_unchecked(index).node;
@@ -605,7 +605,7 @@ impl Tree {
                         edge.node = node.clone();
                         let ptr: *mut Node = mem::transmute(&*node);
                         if iter.peek().is_none() {
-                            try!(verify_type(&mut *ptr, ty));
+                            verify_type(&mut *ptr, ty)?;
                             return Ok((&mut *ptr, Tree {root: root, depth: self.depth}))
                         }
                     } else {

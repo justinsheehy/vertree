@@ -2,7 +2,6 @@ use msgpack::decode::{read_u32, read_u8, read_str_len, read_str_data, read_u64_l
 use msgpack::decode::{read_array_size, read_bin_len, ValueReadError, ReadError};
 use msgpack::encode::{write_u32, write_u8, write_str, write_uint, write_array_len, write_bin};
 
-use std::mem;
 use std::io::{Write, Read, Seek, SeekFrom};
 use std::error::Error;
 use std::sync::Arc;
@@ -42,8 +41,7 @@ pub fn load<R>(reader: &mut R) -> Result<Tree> where R: Read + Seek {
     let root = Arc::new(root.unwrap());
     read_inner_nodes(root.clone(), reader, depth)?;
     // We are done reading the file
-    return Ok(Tree { root: root, depth: depth });
-}
+    Ok(Tree { root: root, depth: depth })}
 
 fn read_inner_nodes<R>(root: Arc<Node>, reader: &mut R, depth: u32) -> Result<()>
     where R: Read + Seek
@@ -55,7 +53,7 @@ fn read_inner_nodes<R>(root: Arc<Node>, reader: &mut R, depth: u32) -> Result<()
         match read_node(reader) {
             Ok(Some(node)) => {
                 let node = Arc::new(node);
-                let node_depth = node.path.split("/").skip_while(|&s| s == "").count();
+                let node_depth = node.path.split('/').skip_while(|&s| s == "").count();
                 while node_depth != stack.len() {
                     stack.pop();
                 }
@@ -77,7 +75,7 @@ fn read_inner_nodes<R>(root: Arc<Node>, reader: &mut R, depth: u32) -> Result<()
     }
 }
 
-/// Serialize an IterNode and write it to `W`
+/// Serialize an `IterNode` and write it to `W`
 ///
 /// This function uses the low level msgpack functions directly to avoid allocation
 fn write_node<W: Write>(writer: &mut W, node: &IterNode) -> Result<()> {
@@ -91,17 +89,17 @@ fn write_node<W: Write>(writer: &mut W, node: &IterNode) -> Result<()> {
                 write_str(writer, label)?;
             }
         },
-        IterContent::Container(ref container) => {
+        IterContent::Container(container) => {
             write_u8(writer, CONTAINER_TYPE_ID)?;
-            write_container(writer, &container)?;
+            write_container(writer, container)?;
         }
     }
     Ok(())
 }
 
-/// Read a msgpack encoded IterNode from a file and return a Node based on it
+/// Read a msgpack encoded `IterNode` from a file and return a Node based on it
 ///
-/// Since directories contain child pointers in Nodes, but not in IterNodes, this function allocates
+/// Since directories contain child pointers in Nodes, but not in `IterNode`s, this function allocates
 /// a properly sized vector for directory entries (edges) but leaves it empty. It will be filled in
 /// when reconstructing the tree.
 fn read_node<R>(reader: &mut R) -> Result<Option<Node>> where R: Read + Seek {
@@ -113,14 +111,14 @@ fn read_node<R>(reader: &mut R) -> Result<Option<Node>> where R: Read + Seek {
             })?;
             let version = read_u64_loosely(reader)?;
             let content = read_content(reader)?;
-            return Ok(Some(Node {
+            Ok(Some(Node {
                 path: path.to_string(),
                 version: version,
                 content: content
             }))
         },
-        Err(ValueReadError::InvalidMarkerRead(ReadError::UnexpectedEOF)) => return Ok(None),
-        Err(e) => return Err(e.into())
+        Err(ValueReadError::InvalidMarkerRead(ReadError::UnexpectedEOF)) => Ok(None),
+        Err(e) => Err(e.into())
     }
 }
 
@@ -191,7 +189,7 @@ fn write_container<W: Write>(writer: &mut W, container: &Container) -> Result<()
         Container::Queue(ref queue) => {
             write_u8(writer, QUEUE_TYPE_ID)?;
             write_array_len(writer, queue.len() as u32)?;
-            for blob in queue.data.iter() {
+            for blob in &queue.data {
                 write_blob(writer, blob)?;
             }
             Ok(())
@@ -199,7 +197,7 @@ fn write_container<W: Write>(writer: &mut W, container: &Container) -> Result<()
         Container::Set(ref set) => {
             write_u8(writer, SET_TYPE_ID)?;
             write_array_len(writer, set.data.len() as u32)?;
-            for blob in set.data.iter() {
+            for blob in &set.data {
                 write_blob(writer, blob)?;
             }
             Ok(())
@@ -212,9 +210,9 @@ fn write_blob<W: Write>(writer: &mut W, blob: &[u8]) -> Result<()> {
 }
 
 unsafe fn insert_edge(stack: &mut Vec<Arc<Node>>, node: Arc<Node>) {
-    let parent: *mut Node = mem::transmute(&**stack.last_mut().unwrap());
+    let parent: *mut Node = &**stack.last_mut().unwrap() as *const Node as *mut Node;
     let mut edges = (*parent).content.get_dir_edges_mut().unwrap();
-    let label = node.path.split("/").last().unwrap().to_string();
+    let label = node.path.split('/').last().unwrap().to_string();
     let edge = Edge {
         label: label,
         node: node

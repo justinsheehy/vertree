@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq,Default)]
 pub struct Queue {
     pub data: VecDeque<Vec<u8>>
 }
@@ -43,6 +43,10 @@ impl Queue {
 
     pub fn len(&self) -> usize {
         self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 }
 

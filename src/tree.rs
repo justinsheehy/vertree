@@ -88,7 +88,10 @@ impl Tree {
 
             depth += 1;
         }
-        Ok(Tree {root: root, depth: depth})
+        return Ok(Tree {
+            root: root,
+            depth: depth
+        });
     }
 
     pub fn delete(&self, path: &str) -> Result<(u64, Tree)> {
@@ -98,18 +101,17 @@ impl Tree {
 
         let label = match Path::new(path).file_name() {
             Some(label) => label.to_str().unwrap(),
-            None => return Err(ErrorKind::BadPath(path.to_string()).into())
+            None => return Err(ErrorKind::BadPath(path.to_string()).into()),
         };
-        let parent = match Path::new(path).parent() {
-            Some(parent) =>  parent.to_str().unwrap(),
-            None => return Err(ErrorKind::PathMustBeAbsolute(path.to_string()).into())
+        let parent = match Path::new(path.clone()).parent() {
+            Some(parent) => parent.to_str().unwrap(),
+            None => return Err(ErrorKind::PathMustBeAbsolute(path.to_string()).into()),
         };
 
         let (node, tree) = self.find_mut(parent, NodeType::Directory)?;
         if let Content::Directory(ref mut edges) = node.content {
-            let index = edges.binary_search_by_key(&label, |e| &e.label).map_err(|_| {
-                Error::from(ErrorKind::DoesNotExist(path.to_string()))
-            })?;
+            let index = edges.binary_search_by_key(&label, |e| &e.label)
+                .map_err(|_| Error::from(ErrorKind::DoesNotExist(path.to_string())))?;
             let deleted = edges.remove(index);
             return Ok((deleted.node.version, tree));
         }
@@ -163,17 +165,19 @@ impl Tree {
         let mut tree = self.clone();
         for op in ops {
             tree = match op {
-                WriteOp::CreateNode {path, ty} => {
+                WriteOp::CreateNode { path, ty } => {
                     let new_tree = tree.create(&path, ty)?;
-                    let version = { new_tree.root.version };
+                    let version = {
+                        new_tree.root.version
+                    };
                     replies.push(Reply {
                         path: Some("/".to_string()),
                         version: Some(version),
                         value: Value::None
                     });
                     new_tree
-                },
-                WriteOp::DeleteNode{path} => {
+                }
+                WriteOp::DeleteNode { path } => {
                     let (version, new_tree) = tree.delete(&path)?;
                     replies.push(Reply {
                         path: Some(path),
@@ -181,35 +185,37 @@ impl Tree {
                         value: Value::None
                     });
                     new_tree
-                },
-                WriteOp::BlobPut {path, val} => {
+                }
+                WriteOp::BlobPut { path, val } => {
                     let (reply, new_tree) = tree.blob_put(path, val)?;
                     replies.push(reply);
                     new_tree
-                },
-                WriteOp::QueuePush {path, val} => {
+                }
+                WriteOp::QueuePush { path, val } => {
                     let (reply, new_tree) = tree.queue_push(path, val)?;
                     replies.push(reply);
                     new_tree
-                },
-                WriteOp::QueuePop {path} => {
+                }
+                WriteOp::QueuePop { path } => {
                     let (reply, new_tree) = tree.queue_pop(path)?;
                     replies.push(reply);
                     new_tree
-                },
-                WriteOp::SetInsert {path, val} => {
+                }
+                WriteOp::SetInsert { path, val } => {
                     let (reply, new_tree) = tree.set_insert(path, val)?;
                     replies.push(reply);
                     new_tree
-                },
-                WriteOp::SetRemove {path, val} => {
+                }
+                WriteOp::SetRemove { path, val } => {
                     let (reply, new_tree) = tree.set_remove(path, val)?;
                     replies.push(reply);
                     new_tree
-                },
-                WriteOp::Snapshot {directory} => {
+                }
+                WriteOp::Snapshot { directory } => {
                     let _ = tree.snapshot(&directory)?;
-                    let version = { tree.root.version };
+                    let version = {
+                        tree.root.version
+                    };
                     replies.push(Reply {
                         path: Some("/".to_string()),
                         version: Some(version),
@@ -225,13 +231,17 @@ impl Tree {
     fn check_guards(&self, mut guards: Vec<Guard>) -> Result<()> {
         guards.sort_by_key(|g| g.path.clone());
         guards.dedup_by_key(|g| g.path.clone());
-        let (paths, versions): (Vec<_>, Vec<_>) = guards.iter().map(|g| (&g.path as &str, g.version)).unzip();
+        let (paths, versions): (Vec<_>, Vec<_>) =
+            guards.iter().map(|g| (&g.path as &str, g.version)).unzip();
         for (node, version) in self.path_iter(paths).zip(versions) {
             let node = node?;
             if node.version != version {
-                return Err(ErrorKind::CasFailed {path: node.path.clone(),
-                                                 expected: version,
-                                                 actual: node.version}.into());
+                return Err(ErrorKind::CasFailed {
+                        path: node.path.clone(),
+                        expected: version,
+                        actual: node.version
+                    }
+                    .into());
             }
         }
         Ok(())
@@ -272,7 +282,7 @@ impl Tree {
         let reply = Reply {
             path: Some(path),
             version: Some(version),
-            value: queue.pop().map_or(Value::Empty, Value::Blob),
+            value: queue.pop().map_or(Value::Empty, Value::Blob)
         };
         Ok((reply, tree))
     }
@@ -332,7 +342,7 @@ impl Tree {
             let normalized = validate_path(&path)?;
             self.find_blob(normalized)?
         };
-        Ok(Reply  {
+        Ok(Reply {
             path: Some(path),
             version: Some(version),
             value: Value::Int(blob.len() as u64)
@@ -390,52 +400,45 @@ impl Tree {
     pub fn set_subset(&self,
                       path1: String,
                       path2: Option<String>,
-                      set: Option<HashSet<Vec<u8>>>) -> Result<Reply> {
+                      set: Option<HashSet<Vec<u8>>>)
+                      -> Result<Reply> {
         let normalized = validate_path(&path1)?;
-        self.subset_or_superset("Subset", normalized, path2, set, |set1, set2| {
-            set1.is_subset(set2)
-        })
+        self.subset_or_superset("Subset", normalized, path2, set, |set1, set2| set1.is_subset(set2))
     }
 
     pub fn set_superset(&self,
                         path1: String,
                         path2: Option<String>,
-                        set: Option<HashSet<Vec<u8>>>) -> Result<Reply> {
+                        set: Option<HashSet<Vec<u8>>>)
+                        -> Result<Reply> {
         let normalized = validate_path(&path1)?;
-        self.subset_or_superset("Superset", normalized, path2, set, |set1, set2| {
-            set1.is_superset(set2)
-        })
+        self.subset_or_superset("Superset",
+                                normalized,
+                                path2,
+                                set,
+                                |set1, set2| set1.is_superset(set2))
     }
 
     pub fn set_union(&self, paths: Vec<String>, sets: Vec<HashSet<Vec<u8>>>) -> Result<Reply> {
-        self.set_op(paths, sets, |set1, set2| {
-            Set::fill(set1.union(set2).map(|s| s.to_vec()).collect())
-        })
+        self.set_op(paths,
+                    sets,
+                    |set1, set2| Set::fill(set1.union(set2).map(|s| s.to_vec()).collect()))
     }
 
-    pub fn set_intersection(&self,
-                            path1: &str,
-                            path2: &str) -> Result<Reply>
-    {
+    pub fn set_intersection(&self, path1: &str, path2: &str) -> Result<Reply> {
         self.binary_set_op(path1, path2, |set1, set2| {
             Set::fill(set1.intersection(set2).map(|s| s.to_vec()).collect())
         })
     }
 
-    pub fn set_difference(&self,
-                          path1: &str,
-                          path2: &str) -> Result<Reply>
-    {
+    pub fn set_difference(&self, path1: &str, path2: &str) -> Result<Reply> {
 
         self.binary_set_op(path1, path2, |set1, set2| {
             Set::fill(set1.difference(set2).map(|s| s.to_vec()).collect())
         })
     }
 
-    pub fn set_symmetric_difference(&self,
-                                    path1: &str,
-                                    path2: &str) -> Result<Reply>
-    {
+    pub fn set_symmetric_difference(&self, path1: &str, path2: &str) -> Result<Reply> {
         self.binary_set_op(path1, path2, |set1, set2| {
             Set::fill(set1.symmetric_difference(set2).map(|s| s.to_vec()).collect())
         })
@@ -447,13 +450,16 @@ impl Tree {
                              path1: &str,
                              path2: Option<String>,
                              set: Option<HashSet<Vec<u8>>>,
-                             f: F) -> Result<Reply>
+                             f: F)
+                             -> Result<Reply>
         where F: Fn(&Set, &Set) -> bool
     {
 
         if path2.is_some() && set.is_some() {
             return Err(format!("{} can only operate on 2 sets.
-                                One of `path2` or `set` must be `None`", op).into())
+                                One of `path2` or `set` must be `None`",
+                               op)
+                .into());
         }
         let (set1, _) = self.find_set(path1)?;
 
@@ -473,7 +479,7 @@ impl Tree {
             path: None,
             version: None,
             value: Value::Bool(val)
-           })
+        })
     }
 
     fn binary_set_op<F>(&self, path1: &str, path2: &str, f: F) -> Result<Reply>
@@ -566,7 +572,7 @@ impl Tree {
                         if iter.peek().is_none() {
                             let node = &(*edges.get_unchecked(index).node);
                             verify_type(node, ty)?;
-                            return Ok((&node.content, node.version))
+                            return Ok((&node.content, node.version));
                         }
                         parent = &edges.get_unchecked(index).node;
                         continue;
@@ -588,8 +594,12 @@ impl Tree {
         let mut node = root.clone();
         if path == "/" {
             unsafe {
-            	let ptr: *mut Node = &*node as *const Node as *mut Node;
-                return Ok((&mut *ptr, Tree {root: root, depth: self.depth}))
+                let ptr: *mut Node = &*node as *const Node as *mut Node;
+                return Ok((&mut *ptr,
+                           Tree {
+                               root: root,
+                               depth: self.depth
+                           }));
             }
         }
         // Trim leading empty strings and stop iterating at the first empty string after a valid string
@@ -605,7 +615,11 @@ impl Tree {
                         let ptr: *mut Node = &*node as *const Node as *mut Node;
                         if iter.peek().is_none() {
                             verify_type(&*ptr, ty)?;
-                            return Ok((&mut *ptr, Tree {root: root, depth: self.depth}))
+                            return Ok((&mut *ptr,
+                                       Tree {
+                                           root: root,
+                                           depth: self.depth
+                                       }));
                         }
                     } else {
                         let path = join_path(&node.path, s);
@@ -645,8 +659,7 @@ fn join_path(dir_path: &str, label: &str) -> String {
     path
 }
 
-unsafe fn insert_dir(parent: Arc<Node>, label: &str) -> Result<Arc<Node>>
-{
+unsafe fn insert_dir(parent: Arc<Node>, label: &str) -> Result<Arc<Node>> {
     let ptr: *mut Node = &*parent as *const Node as *mut Node;
     if let Content::Directory(ref mut edges) = (*ptr).content {
         match edges.binary_search_by_key(&label, |e| &e.label) {
@@ -660,7 +673,7 @@ unsafe fn insert_dir(parent: Arc<Node>, label: &str) -> Result<Arc<Node>>
                 let node = cow_node(&child.node);
                 child.node = node.clone();
                 return Ok(node);
-            },
+            }
             Err(index) => {
                 let content = Content::new(NodeType::Directory);
                 // Edge doesn't exist, let's create it in the proper sort position
@@ -695,13 +708,13 @@ unsafe fn insert_leaf(parent: Arc<Node>, label: &str, ty: NodeType) -> Result<()
 ///
 /// Strip leading and trailing slashes and return normalized path as String
 fn validate_path(path: &str) -> Result<&str> {
-    if !path.starts_with('/') {
-        return Err(ErrorKind::BadPath(format!("{} does not start with a '/'", path)).into())
+    if !path.starts_with("/") {
+        return Err(ErrorKind::BadPath(format!("{} does not start with a '/'", path)).into());
     }
     let path = path.trim_matches('/');
     if path.is_empty() {
         return Err(ErrorKind::BadPath("Path must contain at least one component".to_string())
-                   .into());
+            .into());
     }
     Ok(path)
 }

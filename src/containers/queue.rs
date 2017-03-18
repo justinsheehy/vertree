@@ -7,15 +7,11 @@ pub struct Queue {
 
 impl Queue {
     pub fn new() -> Queue {
-        Queue {
-            data: VecDeque::new()
-        }
+        Queue { data: VecDeque::new() }
     }
 
     pub fn with_capacity(size: usize) -> Queue {
-        Queue {
-            data: VecDeque::with_capacity(size)
-        }
+        Queue { data: VecDeque::with_capacity(size) }
     }
 
     /// Append an element onto the back of the queue
@@ -63,8 +59,7 @@ mod tests {
         let res1 = q1.pop();
         match res1 {
             Some(r1) => assert_eq!(r1, blob1),
-            None => panic!("got None, expected Some for res1")
+            None => panic!("got None, expected Some for res1"),
         }
     }
 }
-

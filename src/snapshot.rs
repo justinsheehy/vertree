@@ -43,10 +43,10 @@ pub fn load<R>(reader: &mut R) -> Result<Tree>
     let root = Arc::new(root.unwrap());
     read_inner_nodes(root.clone(), reader, depth)?;
     // We are done reading the file
-    return Ok(Tree {
-                  root: root,
-                  depth: depth
-              });
+    Ok(Tree {
+        root: root,
+        depth: depth
+    })
 }
 
 fn read_inner_nodes<R>(root: Arc<Node>, reader: &mut R, depth: u32) -> Result<()>
@@ -118,14 +118,14 @@ fn read_node<R>(reader: &mut R) -> Result<Option<Node>>
                 .map_err(|e| e.cause().unwrap().to_string())?;
             let version = read_u64_loosely(reader)?;
             let content = read_content(reader)?;
-            return Ok(Some(Node {
-                               path: path.to_string(),
-                               version: version,
-                               content: content
-                           }));
+            Ok(Some(Node {
+                path: path.to_string(),
+                version: version,
+                content: content
+            }))
         }
-        Err(ValueReadError::InvalidMarkerRead(ReadError::UnexpectedEOF)) => return Ok(None),
-        Err(e) => return Err(e.into()),
+        Err(ValueReadError::InvalidMarkerRead(ReadError::UnexpectedEOF)) => Ok(None),
+        Err(e) => Err(e.into()),
     }
 }
 

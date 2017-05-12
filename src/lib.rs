@@ -27,9 +27,6 @@
 // See https://github.com/rust-lang/rust/issues/34511
 #![feature(conservative_impl_trait)]
 
-// Allow using Vec::dedup_by_key
-#![feature(dedup_by)]
-
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;

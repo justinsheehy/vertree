@@ -88,10 +88,10 @@ impl Tree {
 
             depth += 1;
         }
-        return Ok(Tree {
-                      root: root,
-                      depth: depth
-                  });
+        Ok(Tree {
+            root: root,
+            depth: depth
+        })
     }
 
     pub fn delete(&self, path: &str) -> Result<(u64, Tree)> {
@@ -103,7 +103,7 @@ impl Tree {
             Some(label) => label.to_str().unwrap(),
             None => return Err(ErrorKind::BadPath(path.to_string()).into()),
         };
-        let parent = match Path::new(path.clone()).parent() {
+        let parent = match Path::new(path).parent() {
             Some(parent) => parent.to_str().unwrap(),
             None => return Err(ErrorKind::PathMustBeAbsolute(path.to_string()).into()),
         };
@@ -724,7 +724,7 @@ unsafe fn insert_leaf(parent: Arc<Node>, label: &str, ty: NodeType) -> Result<()
 ///
 /// Strip leading and trailing slashes and return normalized path as String
 fn validate_path(path: &str) -> Result<&str> {
-    if !path.starts_with("/") {
+    if !path.starts_with('/') {
         return Err(ErrorKind::BadPath(format!("{} does not start with a '/'", path)).into());
     }
     let path = path.trim_matches('/');

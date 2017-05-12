@@ -52,7 +52,7 @@ impl<'a> Iterator for Iter<'a> {
                 self.stack.extend(edges.iter().rev().map(|edge| &edge.node));
                 IterContent::Directory(edges.iter().map(|edge| &edge.label as &str).collect())
             }
-            Content::Container(ref container) => IterContent::Container(&container),
+            Content::Container(ref container) => IterContent::Container(container),
         };
         Some(IterNode {
                  path: &node.path,

@@ -24,7 +24,7 @@ impl Arbitrary for Path {
 impl Arbitrary for NodeType {
     fn arbitrary<G: Gen>(g: &mut G) -> NodeType {
         g.choose(&[NodeType::Directory, NodeType::Queue, NodeType::Set, NodeType::Blob])
-            .unwrap()
-            .clone()
+         .unwrap()
+         .clone()
     }
 }

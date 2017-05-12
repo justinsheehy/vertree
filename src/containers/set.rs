@@ -8,8 +8,8 @@ pub struct Set {
 /// An abstract set datatype
 ///
 /// In order to avoid unnecessary copying, this implementation uses [impl
-/// Trait](https://aturon.github.io/blog/2015/09/28/impl-trait/). Currently `impl Trait` is only
-/// availible in nightly builds. Here's the implementation
+/// Trait](https://aturon.github.io/blog/2015/09/28/impl-trait/). Currently
+/// `impl Trait` is only availible in nightly builds. Here's the implementation
 /// [commit](https://github.com/rust-lang/rust/pull/35091).
 impl Set {
     pub fn new() -> Set {
@@ -25,7 +25,8 @@ impl Set {
     }
 
     /// Insert an element into the set.
-    /// Returns `true` if the element was added, and `false` if it already existed in the set.
+    /// Returns `true` if the element was added, and `false` if it already
+    /// existed in the set.
     pub fn insert(&mut self, element: Vec<u8>) -> bool {
         self.data.insert(element)
     }
@@ -59,11 +60,20 @@ impl Set {
     /// ```
     /// use vertree::containers::Set;
     ///
-    /// let a = Set { data: vec![vec![1], vec![2], vec![3]].into_iter().collect() };
-    /// let b = Set { data: vec![vec![1], vec![2], vec![3], vec![4]].into_iter().collect() };
+    /// let a = Set { data: vec![vec![1],
+    ///                          vec![2],
+    ///                          vec![3]].into_iter().collect() };
+    /// let b = Set { data: vec![vec![1],
+    ///                          vec![2],
+    ///                          vec![3],
+    ///                          vec![4]].into_iter().collect() };
     ///
     /// assert_eq!(Set { data: a.union(&b).cloned().collect() },
-    ///            Set { data: vec![vec![1], vec![2], vec![3], vec![4]].into_iter().collect() });
+    ///            Set { data: vec![vec![1],
+    ///                             vec![2],
+    ///                             vec![3],
+    ///                             vec![4]].into_iter()
+    ///                                     .collect() });
     pub fn union<'a>(&'a self, other: &'a Set) -> impl Iterator<Item = &'a Vec<u8>> {
         self.data.union(&other.data)
     }
@@ -75,18 +85,24 @@ impl Set {
     /// ```
     /// use vertree::containers::Set;
     ///
-    /// let a = Set { data: vec![vec![1], vec![2], vec![3]].into_iter().collect() };
-    /// let b = Set { data: vec![vec![2], vec![3], vec![4]].into_iter().collect() };
+    /// let a = Set { data: vec![vec![1],
+    ///                          vec![2],
+    ///                          vec![3]].into_iter().collect() };
+    /// let b = Set { data: vec![vec![2],
+    ///                          vec![3],
+    ///                          vec![4]].into_iter().collect() };
     ///
     /// let result = Set { data: a.intersection(&b).cloned().collect() };
-    /// assert_eq!(result, Set { data: vec![vec![2], vec![3]].into_iter().collect() });
+    /// assert_eq!(result, Set { data: vec![vec![2],
+    ///                                     vec![3]].into_iter().collect() });
     pub fn intersection<'a>(&'a self, other: &'a Set) -> impl Iterator<Item = &'a Vec<u8>> {
         self.data.intersection(&other.data)
     }
 
     /// Returns the difference between two sets
     ///
-    /// The difference is seen as `self - other`, which is all the keys in `self` that don't exist
+    /// The difference is seen as `self - other`, which is all the keys in
+    /// `self` that don't exist
     /// in `other`.
     ///
     /// # Examples
@@ -94,8 +110,12 @@ impl Set {
     /// ```
     /// use vertree::containers::Set;
     ///
-    /// let a = Set { data: vec![vec![1], vec![2], vec![3]].into_iter().collect() };
-    /// let b = Set { data: vec![vec![2], vec![3], vec![4]].into_iter().collect() };
+    /// let a = Set { data: vec![vec![1],
+    ///                          vec![2],
+    ///                          vec![3]].into_iter().collect() };
+    /// let b = Set { data: vec![vec![2],
+    ///                          vec![3],
+    ///                          vec![4]].into_iter().collect() };
     ///
     /// let result = Set { data: a.difference(&b).cloned().collect() };
     /// assert_eq!(result, Set { data: vec![vec![1]].into_iter().collect() });
@@ -105,7 +125,8 @@ impl Set {
 
     /// Returns the symmetric difference between two sets
     ///
-    /// The difference is seen as the union of `self - other`, and `other - self`, which is all the
+    /// The difference is seen as the union of `self - other`, and `other -
+    /// self`, which is all the
     /// keys that don't exist in both sets.
     ///
     /// # Examples
@@ -113,11 +134,19 @@ impl Set {
     /// ```
     /// use vertree::containers::Set;
     ///
-    /// let a = Set { data: vec![vec![1], vec![2], vec![3]].into_iter().collect() };
-    /// let b = Set { data: vec![vec![2], vec![3], vec![4]].into_iter().collect() };
+    /// let a = Set { data: vec![vec![1],
+    ///                          vec![2],
+    ///                          vec![3]].into_iter().collect() };
+    /// let b = Set { data: vec![vec![2],
+    ///                          vec![3],
+    ///                          vec![4]].into_iter().collect() };
     ///
-    /// let result_a = Set { data: a.symmetric_difference(&b).cloned().collect() };
-    /// let result_b = Set { data: b.symmetric_difference(&a).cloned().collect() };
+    /// let result_a = Set { data: a.symmetric_difference(&b)
+    ///                             .cloned()
+    ///                             .collect() };
+    /// let result_b = Set { data: b.symmetric_difference(&a)
+    ///                             .cloned()
+    ///                             .collect() };
     /// assert_eq!(result_a, result_b);
     /// assert_eq!(result_a,
     ///            Set { data: vec![vec![1], vec![4]].into_iter().collect() });

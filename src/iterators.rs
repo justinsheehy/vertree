@@ -55,10 +55,10 @@ impl<'a> Iterator for Iter<'a> {
             Content::Container(ref container) => IterContent::Container(&container),
         };
         Some(IterNode {
-            path: &node.path,
-            version: node.version,
-            content: content
-        })
+                 path: &node.path,
+                 version: node.version,
+                 content: content
+             })
     }
 }
 
@@ -124,8 +124,8 @@ impl<'a> CowPathIter<'a> {
         }
     }
 
-    /// Once `next` returns `None` a complete tree has been assembled. It can be retrieved via a call
-    /// to `get_tree`.
+    /// Once `next` returns `None` a complete tree has been assembled. It can be retrieved via a
+    /// call to `get_tree`.
     pub fn get_tree(&self) -> Tree {
         self.tree.clone()
     }
@@ -299,8 +299,10 @@ mod tests {
     fn create_nodes_iter_check() {
         let tree = Tree::new();
         let tree = tree.create("/somenode", NodeType::Directory).unwrap();
-        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
-        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set)
+                       .unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue)
+                       .unwrap();
 
         // Tuples are (path, num_edges, version)
         // Num edges is  None if not a directory
@@ -319,7 +321,8 @@ mod tests {
             assert_eq!(node.path, path);
             assert_eq!(node.version, version);
             if let Some(num_edges) = num_edges {
-                if let IterContent::Directory(ref labels) = node.content {
+                if let IterContent::Directory(ref labels) =
+                    node.content {
                     assert_eq!(labels.len(), num_edges);
                 } else {
                     assert!(false);
@@ -332,8 +335,10 @@ mod tests {
     fn path_iter() {
         let tree = Tree::new();
         let tree = tree.create("/somenode", NodeType::Directory).unwrap();
-        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
-        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set)
+                       .unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue)
+                       .unwrap();
 
         let mut paths = vec!["/somenode/somechildnode",
                              "/somedir1/somedir2",
@@ -352,8 +357,10 @@ mod tests {
     fn bad_path_iter() {
         let tree = Tree::new();
         let tree = tree.create("/somenode", NodeType::Directory).unwrap();
-        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
-        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set)
+                       .unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue)
+                       .unwrap();
 
         let paths = vec!["/somenode/somechildnode", "/zzz"];
 
@@ -367,8 +374,10 @@ mod tests {
     fn cow_path_iter() {
         let tree = Tree::new();
         let tree = tree.create("/somenode", NodeType::Directory).unwrap();
-        let tree = tree.create("/somenode/somechildnode", NodeType::Blob).unwrap();
-        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Blob).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Blob)
+                       .unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Blob)
+                       .unwrap();
 
         // 3 create calls were made
         assert_eq!(3, tree.root.version);

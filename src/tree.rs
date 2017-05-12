@@ -89,9 +89,9 @@ impl Tree {
             depth += 1;
         }
         return Ok(Tree {
-            root: root,
-            depth: depth
-        });
+                      root: root,
+                      depth: depth
+                  });
     }
 
     pub fn delete(&self, path: &str) -> Result<(u64, Tree)> {
@@ -109,9 +109,11 @@ impl Tree {
         };
 
         let (node, tree) = self.find_mut(parent, NodeType::Directory)?;
-        if let Content::Directory(ref mut edges) = node.content {
-            let index = edges.binary_search_by_key(&label, |e| &e.label)
-                .map_err(|_| Error::from(ErrorKind::DoesNotExist(path.to_string())))?;
+        if let Content::Directory(ref mut edges) =
+            node.content {
+            let index =
+                edges.binary_search_by_key(&label, |e| &e.label)
+                     .map_err(|_| Error::from(ErrorKind::DoesNotExist(path.to_string())))?;
             let deleted = edges.remove(index);
             return Ok((deleted.node.version, tree));
         }
@@ -119,7 +121,9 @@ impl Tree {
     }
 
     pub fn keys(&self) -> Vec<(String, u64)> {
-        self.iter().map(|node| (node.path.to_string(), node.version)).collect()
+        self.iter()
+            .map(|node| (node.path.to_string(), node.version))
+            .collect()
     }
 
     pub fn iter(&self) -> Iter {
@@ -171,19 +175,19 @@ impl Tree {
                         new_tree.root.version
                     };
                     replies.push(Reply {
-                        path: Some("/".to_string()),
-                        version: Some(version),
-                        value: Value::None
-                    });
+                                     path: Some("/".to_string()),
+                                     version: Some(version),
+                                     value: Value::None
+                                 });
                     new_tree
                 }
                 WriteOp::DeleteNode { path } => {
                     let (version, new_tree) = tree.delete(&path)?;
                     replies.push(Reply {
-                        path: Some(path),
-                        version: Some(version),
-                        value: Value::None
-                    });
+                                     path: Some(path),
+                                     version: Some(version),
+                                     value: Value::None
+                                 });
                     new_tree
                 }
                 WriteOp::BlobPut { path, val } => {
@@ -217,10 +221,10 @@ impl Tree {
                         tree.root.version
                     };
                     replies.push(Reply {
-                        path: Some("/".to_string()),
-                        version: Some(version),
-                        value: Value::None
-                    });
+                                     path: Some("/".to_string()),
+                                     version: Some(version),
+                                     value: Value::None
+                                 });
                     tree.clone()
                 }
             }
@@ -237,11 +241,11 @@ impl Tree {
             let node = node?;
             if node.version != version {
                 return Err(ErrorKind::CasFailed {
-                        path: node.path.clone(),
-                        expected: version,
-                        actual: node.version
-                    }
-                    .into());
+                               path: node.path.clone(),
+                               expected: version,
+                               actual: node.version
+                           }
+                           .into());
             }
         }
         Ok(())
@@ -331,10 +335,10 @@ impl Tree {
             self.find_blob(normalized)?
         };
         Ok(Reply {
-            path: Some(path),
-            version: Some(version),
-            value: Value::Blob(blob.to_vec())
-        })
+               path: Some(path),
+               version: Some(version),
+               value: Value::Blob(blob.to_vec())
+           })
     }
 
     pub fn blob_size(&self, path: String) -> Result<Reply> {
@@ -343,10 +347,10 @@ impl Tree {
             self.find_blob(normalized)?
         };
         Ok(Reply {
-            path: Some(path),
-            version: Some(version),
-            value: Value::Int(blob.len() as u64)
-        })
+               path: Some(path),
+               version: Some(version),
+               value: Value::Int(blob.len() as u64)
+           })
     }
 
     pub fn queue_front(&self, path: String) -> Result<Reply> {
@@ -355,10 +359,11 @@ impl Tree {
             self.find_queue(normalized)?
         };
         Ok(Reply {
-            path: Some(path),
-            version: Some(version),
-            value: queue.front().map_or(Value::Empty, |b| Value::Blob(b.clone()))
-        })
+               path: Some(path),
+               version: Some(version),
+               value: queue.front()
+                           .map_or(Value::Empty, |b| Value::Blob(b.clone()))
+           })
     }
 
     pub fn queue_back(&self, path: String) -> Result<Reply> {
@@ -367,10 +372,11 @@ impl Tree {
             self.find_queue(normalized)?
         };
         Ok(Reply {
-            path: Some(path),
-            version: Some(version),
-            value: queue.back().map_or(Value::Empty, |b| Value::Blob(b.clone()))
-        })
+               path: Some(path),
+               version: Some(version),
+               value: queue.back()
+                           .map_or(Value::Empty, |b| Value::Blob(b.clone()))
+           })
     }
 
     pub fn queue_len(&self, path: String) -> Result<Reply> {
@@ -379,10 +385,10 @@ impl Tree {
             self.find_queue(normalized)?
         };
         Ok(Reply {
-            path: Some(path),
-            version: Some(version),
-            value: Value::Int(queue.len() as u64)
-        })
+               path: Some(path),
+               version: Some(version),
+               value: Value::Int(queue.len() as u64)
+           })
     }
 
     pub fn set_contains(&self, path: String, val: Vec<u8>) -> Result<Reply> {
@@ -391,10 +397,10 @@ impl Tree {
             self.find_set(normalized)?
         };
         Ok(Reply {
-            path: Some(path),
-            version: Some(version),
-            value: Value::Bool(set.contains(&val))
-        })
+               path: Some(path),
+               version: Some(version),
+               value: Value::Bool(set.contains(&val))
+           })
     }
 
     pub fn set_subset(&self,
@@ -440,7 +446,9 @@ impl Tree {
 
     pub fn set_symmetric_difference(&self, path1: &str, path2: &str) -> Result<Reply> {
         self.binary_set_op(path1, path2, |set1, set2| {
-            Set::fill(set1.symmetric_difference(set2).map(|s| s.to_vec()).collect())
+            Set::fill(set1.symmetric_difference(set2)
+                          .map(|s| s.to_vec())
+                          .collect())
         })
     }
 
@@ -459,7 +467,7 @@ impl Tree {
             return Err(format!("{} can only operate on 2 sets.
                                 One of `path2` or `set` must be `None`",
                                op)
-                .into());
+                           .into());
         }
         let (set1, _) = self.find_set(path1)?;
 
@@ -476,10 +484,10 @@ impl Tree {
         };
 
         Ok(Reply {
-            path: None,
-            version: None,
-            value: Value::Bool(val)
-        })
+               path: None,
+               version: None,
+               value: Value::Bool(val)
+           })
     }
 
     fn binary_set_op<F>(&self, path1: &str, path2: &str, f: F) -> Result<Reply>
@@ -501,10 +509,10 @@ impl Tree {
             if let Some(set2) = node2.content.get_set() {
                 let result = f(set1, set2);
                 Ok(Reply {
-                    path: None,
-                    version: None,
-                    value: Value::Set(result)
-                })
+                       path: None,
+                       version: None,
+                       value: Value::Set(result)
+                   })
             } else {
                 Err(ErrorKind::WrongType(node2.path.clone(), node2.get_type()).into())
             }
@@ -536,10 +544,10 @@ impl Tree {
         }
 
         Ok(Reply {
-            path: None,
-            version: None,
-            value: Value::Set(result)
-        })
+               path: None,
+               version: None,
+               value: Value::Set(result)
+           })
     }
 
     fn find_blob(&self, path: &str) -> Result<(&[u8], u64)> {
@@ -563,8 +571,12 @@ impl Tree {
     /// node at `path` is of the wrong type.
     pub fn find(&self, path: &str, ty: NodeType) -> Result<(&Content, u64)> {
         let mut parent = &self.root;
-        // Trim leading empty strings and stop iterating at the first empty string after a valid string
-        let mut iter = path.split('/').skip_while(|s| *s == "").take_while(|s| *s != "").peekable();
+        // Trim leading empty strings and stop iterating at the first empty string after a valid
+        // string
+        let mut iter = path.split('/')
+                           .skip_while(|s| *s == "")
+                           .take_while(|s| *s != "")
+                           .peekable();
         while let Some(s) = iter.next() {
             unsafe {
                 if let Content::Directory(ref edges) = (*parent).content {
@@ -602,8 +614,12 @@ impl Tree {
                            }));
             }
         }
-        // Trim leading empty strings and stop iterating at the first empty string after a valid string
-        let mut iter = path.split('/').skip_while(|s| *s == "").take_while(|s| *s != "").peekable();
+        // Trim leading empty strings and stop iterating at the first empty string after a valid
+        // string
+        let mut iter = path.split('/')
+                           .skip_while(|s| *s == "")
+                           .take_while(|s| *s != "")
+                           .peekable();
         while let Some(s) = iter.next() {
             unsafe {
                 let ptr: *mut Node = &*node as *const Node as *mut Node;
@@ -714,7 +730,7 @@ fn validate_path(path: &str) -> Result<&str> {
     let path = path.trim_matches('/');
     if path.is_empty() {
         return Err(ErrorKind::BadPath("Path must contain at least one component".to_string())
-            .into());
+                       .into());
     }
     Ok(path)
 }
@@ -730,14 +746,18 @@ mod tests {
     fn create_and_delete_nodes() {
         let original_tree = Tree::new();
         assert_eq!(original_tree.root.version, 0);
-        let tree = original_tree.create("/somenode", NodeType::Directory).unwrap();
+        let tree = original_tree.create("/somenode", NodeType::Directory)
+                                .unwrap();
         assert_eq!(tree.root.version, 1);
-        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set)
+                       .unwrap();
         assert_eq!(tree.root.version, 2);
-        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue).unwrap();
+        let tree = tree.create("/somedir1/somedir2/leaf", NodeType::Queue)
+                       .unwrap();
         assert_eq!(tree.root.version, 3);
         assert_eq!(original_tree.root.version, 0);
-        if let Content::Directory(ref edges) = tree.root.content {
+        if let Content::Directory(ref edges) =
+            tree.root.content {
             assert_eq!(edges.len(), 2);
             assert_eq!(edges[0].label, "somedir1".to_string());
             assert_eq!(edges[1].label, "somenode".to_string());
@@ -771,14 +791,17 @@ mod tests {
         } else {
             assert!(false);
         }
-        let err = tree.create("/somenode/somechildnode", NodeType::Set).unwrap_err();
+        let err = tree.create("/somenode/somechildnode", NodeType::Set)
+                      .unwrap_err();
         assert_matches!(*err.kind(), ErrorKind::AlreadyExists(_));
         let err = tree.create("blahblah", NodeType::Set).unwrap_err();
         assert_matches!(*err.kind(), ErrorKind::BadPath(_));
-        let err = tree.create("/somenode/somechildnode/leaf", NodeType::Set).unwrap_err();
+        let err = tree.create("/somenode/somechildnode/leaf", NodeType::Set)
+                      .unwrap_err();
         assert_matches!(*err.kind(), ErrorKind::InvalidPathContent(_));
         let (_, tree) = tree.delete("/somenode/somechildnode").unwrap();
-        let tree = tree.create("/somenode/somechildnode", NodeType::Set).unwrap();
+        let tree = tree.create("/somenode/somechildnode", NodeType::Set)
+                       .unwrap();
         let (version, tree) = tree.delete("/somenode/somechildnode").unwrap();
         assert_eq!(0, version);
         let err = tree.delete("/somenode/somechildnode").unwrap_err();

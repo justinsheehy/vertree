@@ -68,15 +68,15 @@ mod tests {
     /// Any op that doesn't succeed on it's own is removed from the list
     fn filter_by_valid<'a>(ops: Vec<WriteOp>) -> (Vec<WriteOp>, Vec<Reply>, Tree) {
         ops.into_iter()
-            .fold((Vec::new(), Vec::new(), Tree::new()), |(mut ops, mut replies, tree), op| {
-                match tree.multi_cas(vec![], vec![op.clone()]) {
-                    Ok((new_replies, new_tree)) => {
-                        ops.push(op);
-                        replies.extend(new_replies);
-                        (ops, replies, new_tree)
-                    }
-                    Err(_) => (ops, replies, tree),
+           .fold((Vec::new(), Vec::new(), Tree::new()), |(mut ops, mut replies, tree), op| {
+            match tree.multi_cas(vec![], vec![op.clone()]) {
+                Ok((new_replies, new_tree)) => {
+                    ops.push(op);
+                    replies.extend(new_replies);
+                    (ops, replies, new_tree)
                 }
-            })
+                Err(_) => (ops, replies, tree),
+            }
+        })
     }
 }

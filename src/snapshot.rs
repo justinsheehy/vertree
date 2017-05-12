@@ -44,9 +44,9 @@ pub fn load<R>(reader: &mut R) -> Result<Tree>
     read_inner_nodes(root.clone(), reader, depth)?;
     // We are done reading the file
     return Ok(Tree {
-        root: root,
-        depth: depth
-    });
+                  root: root,
+                  depth: depth
+              });
 }
 
 fn read_inner_nodes<R>(root: Arc<Node>, reader: &mut R, depth: u32) -> Result<()>
@@ -105,24 +105,24 @@ fn write_node<W: Write>(writer: &mut W, node: &IterNode) -> Result<()> {
 
 /// Read a msgpack encoded `IterNode` from a file and return a Node based on it
 ///
-/// Since directories contain child pointers in Nodes, but not in `IterNode`s, this function allocates
-/// a properly sized vector for directory entries (edges) but leaves it empty. It will be filled in
-/// when reconstructing the tree.
+/// Since directories contain child pointers in Nodes, but not in `IterNode`s, this function
+/// allocates a properly sized vector for directory entries (edges) but leaves it empty. It will be
+/// filled in when reconstructing the tree.
 fn read_node<R>(reader: &mut R) -> Result<Option<Node>>
     where R: Read + Seek
 {
     match read_str_len(reader) {
         Ok(path_len) => {
             let mut path_buf = vec![0u8; path_len as usize];
-            let path = try!(read_str_data(reader, path_len, &mut path_buf)
-                .map_err(|e| e.cause().unwrap().to_string()));
+            let path = read_str_data(reader, path_len, &mut path_buf)
+                .map_err(|e| e.cause().unwrap().to_string())?;
             let version = read_u64_loosely(reader)?;
             let content = read_content(reader)?;
             return Ok(Some(Node {
-                path: path.to_string(),
-                version: version,
-                content: content
-            }));
+                               path: path.to_string(),
+                               version: version,
+                               content: content
+                           }));
         }
         Err(ValueReadError::InvalidMarkerRead(ReadError::UnexpectedEOF)) => return Ok(None),
         Err(e) => return Err(e.into()),
@@ -148,7 +148,7 @@ fn read_content<R>(reader: &mut R) -> Result<Content>
             let container = read_container(reader)?;
             Ok(Content::Container(container))
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
@@ -177,7 +177,7 @@ fn read_container<R: Read>(reader: &mut R) -> Result<Container> {
             }
             Ok(Container::Set(set))
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
@@ -241,8 +241,8 @@ mod tests {
     quickcheck! {
         fn prop_rountrip(node_specs: Vec<(Path, NodeType)>) -> bool {
             let tree = node_specs.iter().fold(Tree::new(), |acc, &(ref path, ref node_type)| {
-                // Ignore failures. We may try to insert a node into a non-directory due to randomness
-                // of generation. It doesn't matter for this property.
+                // Ignore failures. We may try to insert a node into a non-directory due to
+                // randomness of generation. It doesn't matter for this property.
                 match acc.create(&path.0, node_type.clone()) {
                     Ok(tree) => tree,
                     _ => acc

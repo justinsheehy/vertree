@@ -23,10 +23,6 @@
 //! will create new diverging trees, rather than a single 'latest tree'. For that we would require
 //! crossbeam.
 
-// Used by containers/Set
-// See https://github.com/rust-lang/rust/issues/34511
-#![feature(conservative_impl_trait)]
-
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;

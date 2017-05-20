@@ -1,4 +1,6 @@
-use std::collections::HashSet;
+use std::collections::hash_map::RandomState;
+use std::collections::hash_set::{self, HashSet};
+use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq,Default)]
 pub struct Set {
@@ -6,11 +8,6 @@ pub struct Set {
 }
 
 /// An abstract set datatype
-///
-/// In order to avoid unnecessary copying, this implementation uses [impl
-/// Trait](https://aturon.github.io/blog/2015/09/28/impl-trait/). Currently
-/// `impl Trait` is only availible in nightly builds. Here's the implementation
-/// [commit](https://github.com/rust-lang/rust/pull/35091).
 impl Set {
     pub fn new() -> Set {
         Set { data: HashSet::new() }
@@ -74,8 +71,10 @@ impl Set {
     ///                             vec![3],
     ///                             vec![4]].into_iter()
     ///                                     .collect() });
-    pub fn union<'a>(&'a self, other: &'a Set) -> impl Iterator<Item = &'a Vec<u8>> {
-        self.data.union(&other.data)
+    pub fn union<'a>(&'a self, other: &'a Set) -> Union<'a> {
+        Union {
+            iter: self.data.union(&other.data),
+        }
     }
 
     /// Returns the intersection of two sets
@@ -95,8 +94,10 @@ impl Set {
     /// let result = Set { data: a.intersection(&b).cloned().collect() };
     /// assert_eq!(result, Set { data: vec![vec![2],
     ///                                     vec![3]].into_iter().collect() });
-    pub fn intersection<'a>(&'a self, other: &'a Set) -> impl Iterator<Item = &'a Vec<u8>> {
-        self.data.intersection(&other.data)
+    pub fn intersection<'a>(&'a self, other: &'a Set) -> Intersection<'a> {
+        Intersection {
+            iter: self.data.intersection(&other.data),
+        }
     }
 
     /// Returns the difference between two sets
@@ -119,8 +120,10 @@ impl Set {
     ///
     /// let result = Set { data: a.difference(&b).cloned().collect() };
     /// assert_eq!(result, Set { data: vec![vec![1]].into_iter().collect() });
-    pub fn difference<'a>(&'a self, other: &'a Set) -> impl Iterator<Item = &'a Vec<u8>> {
-        self.data.difference(&other.data)
+    pub fn difference<'a>(&'a self, other: &'a Set) -> Difference<'a> {
+        Difference {
+            iter: self.data.difference(&other.data),
+        }
     }
 
     /// Returns the symmetric difference between two sets
@@ -150,8 +153,10 @@ impl Set {
     /// assert_eq!(result_a, result_b);
     /// assert_eq!(result_a,
     ///            Set { data: vec![vec![1], vec![4]].into_iter().collect() });
-    pub fn symmetric_difference<'a>(&'a self, other: &'a Set) -> impl Iterator<Item = &'a Vec<u8>> {
-        self.data.symmetric_difference(&other.data)
+    pub fn symmetric_difference<'a>(&'a self, other: &'a Set) -> SymmetricDifference<'a> {
+        SymmetricDifference {
+            iter: self.data.symmetric_difference(&other.data),
+        }
     }
 
     /// Returns `true` if `self` is a subset of `other`
@@ -162,5 +167,121 @@ impl Set {
     /// Returns `true` if `self` is a subset of `other`
     pub fn is_superset(&self, other: &Set) -> bool {
         self.data.is_superset(&other.data)
+    }
+}
+
+/// A lazy iterator producing elements in the union of `Set`s.
+///
+/// This `struct` is created by the [`union`] method on
+/// [`Set`]. See its documentation for more.
+///
+/// [`Set`]: struct.Set.html
+/// [`union`]: struct.Set.html#method.union
+#[derive(Clone)]
+pub struct Union<'a> {
+    iter: hash_set::Union<'a, Vec<u8>, RandomState>,
+}
+
+impl<'a> fmt::Debug for Union<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.iter.fmt(f)
+    }
+}
+
+impl<'a> Iterator for Union<'a> {
+    type Item = &'a Vec<u8>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+/// A lazy iterator producing elements in the intersection of `Set`s.
+///
+/// This `struct` is created by the [`intersection`] method on
+/// [`Set`]. See its documentation for more.
+///
+/// [`Set`]: struct.Set.html
+/// [`intersection`]: struct.Set.html#method.intersection
+#[derive(Clone)]
+pub struct Intersection<'a> {
+    iter: hash_set::Intersection<'a, Vec<u8>, RandomState>,
+}
+
+impl<'a> fmt::Debug for Intersection<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.iter.fmt(f)
+    }
+}
+
+impl<'a> Iterator for Intersection<'a> {
+    type Item = &'a Vec<u8>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+/// A lazy iterator producing elements in the difference of `Set`s.
+///
+/// This `struct` is created by the [`difference`] method on
+/// [`Set`]. See its documentation for more.
+///
+/// [`Set`]: struct.Set.html
+/// [`difference`]: struct.Set.html#method.difference
+#[derive(Clone)]
+pub struct Difference<'a> {
+    iter: hash_set::Difference<'a, Vec<u8>, RandomState>,
+}
+
+impl<'a> fmt::Debug for Difference<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.iter.fmt(f)
+    }
+}
+
+impl<'a> Iterator for Difference<'a> {
+    type Item = &'a Vec<u8>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+/// A lazy iterator producing elements in the symmetric difference of `Set`s.
+///
+/// This `struct` is created by the [`symmetric_difference`] method on
+/// [`Set`]. See its documentation for more.
+///
+/// [`Set`]: struct.Set.html
+/// [`symmetric_difference`]: struct.Set.html#method.symmetric_difference
+#[derive(Clone)]
+pub struct SymmetricDifference<'a> {
+    iter: hash_set::SymmetricDifference<'a, Vec<u8>, RandomState>,
+}
+
+impl<'a> fmt::Debug for SymmetricDifference<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.iter.fmt(f)
+    }
+}
+
+impl<'a> Iterator for SymmetricDifference<'a> {
+    type Item = &'a Vec<u8>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
     }
 }

@@ -33,7 +33,7 @@ pub struct Reply {
 /// This tree is persistent, and every update to a node both path copies the parent until it gets
 /// to the root and increments the parent's version number. Only a single thread can write to the
 /// tree at one time.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tree {
     pub root: Arc<Node>,
     pub depth: u32
@@ -143,7 +143,7 @@ impl Tree {
         let dir = dir.trim_right_matches('/');
         let filename = format!("{}/vertree_{}.tree", dir, self.root.version);
         let mut f = File::create(&filename)?;
-        snapshot::write(&mut f, self.depth, self.iter())?;
+        snapshot::write(&mut f, self)?;
         Ok(filename)
     }
 

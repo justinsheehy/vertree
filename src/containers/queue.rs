@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-#[derive(Clone, Debug, Eq, PartialEq,Default)]
+#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct Queue {
     pub data: VecDeque<Vec<u8>>
 }

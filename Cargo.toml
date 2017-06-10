@@ -9,10 +9,12 @@ keywords = ["tree", "trie", "immutable", "persistent"]
 license = "Apache-2.0"
 
 [dependencies]
-error-chain = "0.8"
-rmp = "^0.7"
+error-chain = "0.10.0"
+rmp-serde = "0.13.3"
+serde = { version = "1.0.8", features = ["rc"] }
+serde_derive = "1.0.8"
 
 [dev-dependencies]
 assert_matches = "1.0"
-quickcheck = "0.3"
+quickcheck = "0.4.1"
 rand = "0.3"

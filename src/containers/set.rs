@@ -2,7 +2,7 @@ use std::collections::hash_map::RandomState;
 use std::collections::hash_set::{self, HashSet};
 use std::fmt;
 
-#[derive(Clone, Debug, Eq, PartialEq,Default)]
+#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct Set {
     pub data: HashSet<Vec<u8>>
 }

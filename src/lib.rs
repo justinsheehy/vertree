@@ -27,7 +27,12 @@
 #[macro_use]
 extern crate quickcheck;
 
-extern crate rmp as msgpack;
+extern crate serde;
+
+#[macro_use]
+extern crate serde_derive;
+
+extern crate rmp_serde;
 
 #[cfg(test)]
 extern crate rand;

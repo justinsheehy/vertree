@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use containers::{Container, Queue, Set};
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum NodeType {
@@ -10,7 +11,7 @@ pub enum NodeType {
 }
 
 /// A node in a hierarchical version tree
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
     pub path: String,
     pub version: u64,
@@ -39,7 +40,7 @@ impl Node {
 }
 
 /// The contents of a Node
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Content {
     Directory(Vec<Edge>),
     Container(Container)
@@ -123,5 +124,31 @@ impl Edge {
             label: label.to_string(),
             node: Arc::new(node)
         }
+    }
+}
+
+impl Serialize for Edge {
+    #[inline]
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.node.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Edge {
+    #[inline]
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let node = Node::deserialize(deserializer)?;
+        // Parse out the label from the node path.
+        let label = if let Some(pos) = node.path.rfind('/') {
+            // Don't include the '/' in the label.
+            node.path[pos + 1..].to_string()
+        } else {
+            node.path.clone()
+        };
+
+        Ok(Edge {
+            label: label,
+            node: Arc::new(node),
+        })
     }
 }

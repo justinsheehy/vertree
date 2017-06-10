@@ -1,11 +1,11 @@
 use node::NodeType;
-use msgpack;
+use rmp_serde;
 
 error_chain! {
     foreign_links {
         Io(::std::io::Error) #[cfg(unix)];
-        MsgPackValueWriteError(msgpack::encode::ValueWriteError);
-        MsgPackValueReadError(msgpack::decode::ValueReadError);
+        MsgPackEncodeError(rmp_serde::encode::Error);
+        MsgPackDecodeError(rmp_serde::decode::Error);
     }
 
     errors {

@@ -1,6 +1,6 @@
 [package]
 name = "vertree"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Justin Sheehy <justin@iago.org>",
            "Andrew J. Stone <andrew.j.stone.1@gmail.com>"]
 description = "A persistent trie where each node is typed and versioned"

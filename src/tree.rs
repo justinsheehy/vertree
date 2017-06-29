@@ -33,7 +33,7 @@ pub struct Reply {
 /// This tree is persistent, and every update to a node both path copies the parent until it gets
 /// to the root and increments the parent's version number. Only a single thread can write to the
 /// tree at one time.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tree {
     pub root: Arc<Node>,
     pub depth: u32

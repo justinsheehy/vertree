@@ -11,7 +11,7 @@ pub enum NodeType {
 }
 
 /// A node in a hierarchical version tree
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub path: String,
     pub version: u64,
@@ -40,7 +40,7 @@ impl Node {
 }
 
 /// The contents of a Node
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Content {
     Directory(Vec<Edge>),
     Container(Container)
@@ -112,7 +112,7 @@ impl Content {
 }
 
 /// A single entry in the contents of an interior node
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Edge {
     pub label: String,
     pub node: Arc<Node>

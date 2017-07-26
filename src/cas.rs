@@ -3,7 +3,7 @@ use node::NodeType;
 /// A Guard on a CAS operation
 ///
 /// A guard is true if the current version of the node at `path` is the same as `version`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Guard {
     pub path: String,
     pub version: u64

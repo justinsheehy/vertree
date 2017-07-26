@@ -2,7 +2,7 @@ use std::sync::Arc;
 use containers::{Container, Queue, Set};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NodeType {
     Directory,
     Blob,
